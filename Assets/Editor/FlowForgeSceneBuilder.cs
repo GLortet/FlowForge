@@ -243,16 +243,11 @@ public static class FlowForgeSceneBuilder
     {
         var gameManagerObject = new GameObject("GameManager");
         var manager = gameManagerObject.AddComponent<FlowForgePrototypeSceneManager>();
-        manager.isoCamera = camera;
-        manager.directionalLight = light;
         manager.machines = machines;
-        manager.operatorAvatar = operatorAvatar;
-        manager.visualFeedbackAnchor = machines.Length > 1 ? machines[1] : operatorAvatar;
         manager.scoreLeanText = hud.ScoreLeanText;
-        manager.scrapsText = hud.ScrapsText;
+        manager.rebutsText = hud.ScrapsText;
         manager.trsText = hud.TrsText;
         manager.stockText = hud.StockText;
-        manager.feedbackText = hud.FeedbackText;
         manager.apply5SButton = hud.Apply5SButton;
 
         UnityEventTools.AddPersistentListener(hud.Apply5SButton.onClick, manager.Apply5S);
