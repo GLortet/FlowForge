@@ -126,7 +126,7 @@ GameObject:
   - component: {fileID: 100001}
   - component: {fileID: 100002}
   m_Layer: 0
-  m_Name: FlowForge Bootstrap
+  m_Name: GameManager
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

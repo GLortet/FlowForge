@@ -15,7 +15,7 @@ FlowForge est un prototype Unity de simulation-gestion Lean. Le joueur améliore
 2. Ouvrir la scène `Assets/FlowForge/Scenes/FlowForgePrototype.unity`.
 3. Appuyer sur Play.
 
-La scène contient un GameObject `FlowForge Bootstrap` qui crée automatiquement la caméra, la lumière, la grille, les trois postes, un opérateur, la simulation et le HUD. Cliquez sur **Appliquer 5S** pour voir une amélioration visible et mesurable.
+La scène contient un GameObject `GameManager`. Si vous devez reconstruire la scène complète avec les objets concrets déjà placés dans la hiérarchie, utilisez le menu Unity **Tools > FlowForge > Build Prototype Scene**. La scène jouable contient caméra isométrique, lumière, grille, trois machines, un opérateur, le HUD et le bouton **Appliquer 5S**.
 
 ## Philosophie
 
