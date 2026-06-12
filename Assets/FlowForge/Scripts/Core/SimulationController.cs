@@ -68,6 +68,7 @@ namespace FlowForge.Core
             workshopGrid.Build(gridWidth, gridHeight, new Color(0.82f, 0.78f, 0.68f));
 
             SpawnWorkstations();
+            SpawnFlowMarkers();
             SpawnOperators();
         }
 
@@ -93,10 +94,32 @@ namespace FlowForge.Core
             }
         }
 
+
+        private void SpawnFlowMarkers()
+        {
+            for (var i = 0; i < workstations.Count - 1; i++)
+            {
+                var start = workstations[i].transform.position;
+                var end = workstations[i + 1].transform.position;
+                var direction = end - start;
+                var distance = direction.magnitude;
+
+                var marker = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                marker.name = $"Flow Arrow {i + 1}";
+                marker.transform.position = Vector3.Lerp(start, end, 0.5f) + Vector3.up * 0.12f;
+                marker.transform.rotation = Quaternion.LookRotation(direction.normalized, Vector3.up);
+                marker.transform.localScale = new Vector3(0.16f, 0.08f, distance * 0.55f);
+
+                var renderer = marker.GetComponent<Renderer>();
+                renderer.material = new Material(Shader.Find("Standard"));
+                renderer.material.color = new Color(1f, 0.82f, 0.18f);
+            }
+        }
+
         private void SpawnOperators()
         {
             operators.Clear();
-            for (var i = 0; i < 2; i++)
+            for (var i = 0; i < 1; i++)
             {
                 var capsule = GameObject.CreatePrimitive(PrimitiveType.Capsule);
                 capsule.name = $"Operator {i + 1}";

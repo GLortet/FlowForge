@@ -24,6 +24,7 @@ namespace FlowForge.Simulation
         public float WaitingTime { get; private set; }
         public float Money { get; private set; } = 500f;
         public float Reputation { get; private set; }
+        public float LeanScoreBonus { get; private set; }
 
         public void StartRun(IEnumerable<Workstation> stations, IEnumerable<OperatorAgent> agents)
         {
@@ -39,6 +40,7 @@ namespace FlowForge.Simulation
             WaitingQueueSize = 0;
             NonQualityCost = 0f;
             WaitingTime = 0f;
+            LeanScoreBonus = 0f;
             completedLeadTimes.Clear();
         }
 
@@ -69,10 +71,27 @@ namespace FlowForge.Simulation
             Reputation += order.QualityState == ItemQualityState.Defective ? 0f : 0.35f;
         }
 
-        public void AddImprovementReward(float reputation, float money)
+        public void AddImprovementReward(float reputation, float money, float leanScoreBonus = 0f)
         {
             Reputation += reputation;
             Money += money;
+            LeanScoreBonus += leanScoreBonus;
+        }
+
+        public void ApplyVisibleWasteReduction(float scrapReductionPercent, float nonQualityCostReductionPercent)
+        {
+            var clampedScrapReduction = Mathf.Clamp01(scrapReductionPercent);
+            if (ScrapCount > 0)
+            {
+                ScrapCount = Mathf.Max(0, Mathf.FloorToInt(ScrapCount * (1f - clampedScrapReduction)));
+            }
+
+            if (ReworkCount > 0)
+            {
+                ReworkCount = Mathf.Max(0, Mathf.FloorToInt(ReworkCount * (1f - clampedScrapReduction)));
+            }
+
+            NonQualityCost *= 1f - Mathf.Clamp01(nonQualityCostReductionPercent);
         }
 
         public float GetMetric(MetricType type)
@@ -128,7 +147,7 @@ namespace FlowForge.Simulation
                 var wasteScore = Mathf.Clamp01(1f - ScrapRate);
                 var peopleScore = Mathf.Clamp01(1f - TeamStress);
                 var serviceScore = ServiceRate;
-                return Mathf.RoundToInt((flowScore * 25f) + (wasteScore * 30f) + (peopleScore * 20f) + (serviceScore * 25f));
+                return Mathf.Clamp(Mathf.RoundToInt((flowScore * 25f) + (wasteScore * 30f) + (peopleScore * 20f) + (serviceScore * 25f) + LeanScoreBonus), 0, 100);
             }
         }
     }

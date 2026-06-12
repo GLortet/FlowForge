@@ -12,12 +12,10 @@ FlowForge est un prototype Unity de simulation-gestion Lean. Le joueur améliore
 ## Lancer le prototype
 
 1. Ouvrir le dossier avec Unity 2022.3 LTS ou supérieur.
-2. Créer une scène vide.
-3. Ajouter un GameObject vide nommé `FlowForge Bootstrap`.
-4. Ajouter le composant `FlowForge.Core.GameBootstrap`.
-5. Appuyer sur Play.
+2. Ouvrir la scène `Assets/FlowForge/Scenes/FlowForgePrototype.unity`.
+3. Appuyer sur Play.
 
-Le bootstrap crée automatiquement la caméra, la lumière, la grille, les postes, les opérateurs, la simulation et le HUD. Cliquez sur **Appliquer 5S** pour voir une amélioration visible et mesurable.
+La scène contient un GameObject `FlowForge Bootstrap` qui crée automatiquement la caméra, la lumière, la grille, les trois postes, un opérateur, la simulation et le HUD. Cliquez sur **Appliquer 5S** pour voir une amélioration visible et mesurable.
 
 ## Philosophie
 

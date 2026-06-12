@@ -50,7 +50,8 @@ namespace FlowForge.Lean
                 agent.ReduceStress(config.stressReduction);
             }
 
-            metrics?.AddImprovementReward(3f, -75f);
+            metrics?.ApplyVisibleWasteReduction(0.25f, 0.25f);
+            metrics?.AddImprovementReward(3f, -75f, 12f);
             ToolApplied?.Invoke(config);
         }
 
