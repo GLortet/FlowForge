@@ -70,6 +70,15 @@ namespace FlowForge.Core
             public float[] defectRates = Array.Empty<float>();
         }
 
+        [Serializable]
+        public class LineTask
+        {
+            public string taskName;
+            [Min(0.1f)] public float duration;
+            public int assignedOperationIndex;
+            public bool canMove = true;
+        }
+
         [Header("Manual scene machines")]
         [Tooltip("Drag Machine_01_Decoupe, Machine_02_Assemblage and Machine_03_Controle here.")]
         public Transform[] machines = new Transform[3];
@@ -169,6 +178,9 @@ namespace FlowForge.Core
         public Button restartPuzzleRoundButton;
         public Button confirmActionButton;
         public Button cancelActionButton;
+        public Button pokaYokeDecoupeButton;
+        public Button pokaYokeAssemblageButton;
+        public Button pokaYokeControleButton;
 
         [Header("Feedback colors")]
         public Color bottleneckColor = new Color(1f, 0.35f, 0.05f);
@@ -190,6 +202,7 @@ namespace FlowForge.Core
         private int consumedShifts;
         private float roundActionCost;
         private string lastConfirmedActionName = "Aucune";
+        private LineTask[] lineTasks = Array.Empty<LineTask>();
 
         private void Awake()
         {
@@ -506,11 +519,12 @@ namespace FlowForge.Core
         public void RebalanceLine()
         {
             EnsureOperations();
+            PrepareLineTasksFromOperations();
             var bottleneck = GetBottleneckOperation();
             var helper = GetHighestCapacityOperation();
             if (!isApplyingConfirmedAction)
             {
-                SelectPendingAction(LeanActionType.RebalanceLine, GetOperationIndex(bottleneck), "Rééquilibrer la ligne", "Ligne", 450f, $"Charge transférée de {bottleneck.operationName} vers {helper.operationName}.", "Débit en hausse si le goulot est réellement allégé.", "Rééquilibrer améliore le flux sans acheter automatiquement plus de capacité.");
+                SelectPendingAction(LeanActionType.RebalanceLine, GetOperationIndex(bottleneck), "Rééquilibrer la ligne", "Ligne complète", 450f, $"Analyse de charge : {bottleneck.operationName} limite le débit. Prépare le futur mini-jeu de transfert de tâches.", "Débit en hausse si le goulot est réellement allégé.", "Réduis ou transfère une partie du travail du goulot vers une opération moins chargée.");
                 return;
             }
             const float cost = 450f;
@@ -521,12 +535,13 @@ namespace FlowForge.Core
 
             roundActionCost += cost;
             lastConfirmedActionName = "Rééquilibrer la ligne";
+            var previousBottleneckCycle = bottleneck.cycleTime;
             var movedTime = Mathf.Min(bottleneck.cycleTime * 0.08f, 1.2f);
             bottleneck.cycleTime = Mathf.Max(0.5f, bottleneck.cycleTime - movedTime);
             helper.cycleTime += movedTime * 0.55f;
             scoreLean = Mathf.Clamp(scoreLean + 7, 0, 100);
             RegisterPlayerAction(LeanActionType.RebalanceLine, GetOperationIndex(bottleneck));
-            ShowActionToast($"Action choisie : Rebalance Line\nCoût : {cost:0} €\nEffet : charge transférée du goulot vers une ressource plus disponible.\nL'action sera évaluée au lancement du round.");
+            ShowActionToast($"Action confirmée : Rééquilibrer Ligne\nCoût : {cost:0} €\nGoulot : {previousBottleneckCycle:0.0}s → {bottleneck.cycleTime:0.0}s\nL'action sera évaluée au lancement du round.");
             PlayMachineFeedback(bottleneck, "Goulot allégé", new Color(1f, 0.45f, 0.1f));
             PlayMachineFeedback(helper, "Charge rééquilibrée", new Color(0.35f, 1f, 0.55f));
             CalculateLinePreview();
@@ -576,8 +591,7 @@ namespace FlowForge.Core
             const float cost = 700f;
             if (!isApplyingConfirmedAction)
             {
-                var target = GetHighestDefectOperation();
-                SelectPendingAction(LeanActionType.ApplyPokaYoke, GetOperationIndex(target), "Poka-Yoke process", target.operationName, cost, "Dispositif anti-erreur intégré au process : réduit les défauts à la source.", "Taux de rebuts en baisse sur l'opération la plus risquée et sur le flux complet.", "Un poka-yoke évite l'erreur avant le contrôle final : la qualité est intégrée au process.");
+                BeginPokaYokeTargetSelection();
                 return;
             }
             if (!SpendBudget(cost, "Poka-Yoke impossible : budget insuffisant."))
@@ -586,19 +600,33 @@ namespace FlowForge.Core
             }
 
             roundActionCost += cost;
-            lastConfirmedActionName = "Poka-Yoke process";
-            var pokaYokeTarget = GetHighestDefectOperation();
-            foreach (var operation in operations)
-            {
-                operation.defectRate = Mathf.Clamp01(operation.defectRate * 0.72f);
-            }
+            var targetIndex = Mathf.Clamp(pendingActionTargetIndex, 0, operations.Length - 1);
+            var pokaYokeTarget = GetOperationAtOrFallback(targetIndex);
+            var previousDefectRate = pokaYokeTarget.defectRate;
+            lastConfirmedActionName = $"Poka-Yoke {pokaYokeTarget.operationName}";
+            pokaYokeTarget.defectRate = Mathf.Clamp01(pokaYokeTarget.defectRate * 0.5f);
 
             scoreLean = Mathf.Clamp(scoreLean + 9, 0, 100);
-            RegisterPlayerAction(LeanActionType.ApplyPokaYoke);
-            ShowActionToast($"Action choisie : Poka-Yoke\nCoût : {cost:0} €\nEffet : erreurs évitées à la source, rebuts fortement réduits.\nL'action sera évaluée au lancement du round.");
-            PlayMachineFeedback(GetOperationAtOrFallback(2), "Erreurs évitées", new Color(0.25f, 0.75f, 1f));
+            RegisterPlayerAction(LeanActionType.ApplyPokaYoke, targetIndex);
+            ShowActionToast($"Action confirmée : Poka-Yoke {pokaYokeTarget.operationName}\nCoût : {cost:0} €\nDéfauts : {previousDefectRate:P0} → {pokaYokeTarget.defectRate:P0}\nL'action sera évaluée au lancement du round.");
+            PlayMachineFeedback(pokaYokeTarget, "Erreurs évitées à la source", new Color(0.25f, 0.75f, 1f));
             CalculateLinePreview();
-            RefreshUi("Poka-Yoke appliqué : erreurs évitées à la source, rebuts réduits.");
+            RefreshUi($"Poka-Yoke appliqué sur {pokaYokeTarget.operationName} : défauts réduits à la source.");
+        }
+
+        public void SelectPokaYokeDecoupe()
+        {
+            SelectPokaYokeTarget(0);
+        }
+
+        public void SelectPokaYokeAssemblage()
+        {
+            SelectPokaYokeTarget(1);
+        }
+
+        public void SelectPokaYokeControle()
+        {
+            SelectPokaYokeTarget(2);
         }
 
         public void ApplyTPM()
@@ -1063,6 +1091,9 @@ namespace FlowForge.Core
             WireButton(restartPuzzleRoundButton, RestartPuzzleRound);
             WireButton(confirmActionButton, ConfirmPendingAction);
             WireButton(cancelActionButton, CancelPendingAction);
+            WireButton(pokaYokeDecoupeButton, SelectPokaYokeDecoupe);
+            WireButton(pokaYokeAssemblageButton, SelectPokaYokeAssemblage);
+            WireButton(pokaYokeControleButton, SelectPokaYokeControle);
         }
 
         private void WireButton(Button button, UnityEngine.Events.UnityAction action)
@@ -1095,6 +1126,9 @@ namespace FlowForge.Core
             UnwireButton(restartPuzzleRoundButton, RestartPuzzleRound);
             UnwireButton(confirmActionButton, ConfirmPendingAction);
             UnwireButton(cancelActionButton, CancelPendingAction);
+            UnwireButton(pokaYokeDecoupeButton, SelectPokaYokeDecoupe);
+            UnwireButton(pokaYokeAssemblageButton, SelectPokaYokeAssemblage);
+            UnwireButton(pokaYokeControleButton, SelectPokaYokeControle);
         }
 
         private void UnwireButton(Button button, UnityEngine.Events.UnityAction action)
@@ -1212,6 +1246,9 @@ namespace FlowForge.Core
             restartPuzzleRoundButton = restartPuzzleRoundButton != null ? restartPuzzleRoundButton : FindButton("RestartPuzzleRoundButton");
             confirmActionButton = confirmActionButton != null ? confirmActionButton : FindButton("ConfirmActionButton");
             cancelActionButton = cancelActionButton != null ? cancelActionButton : FindButton("CancelActionButton");
+            pokaYokeDecoupeButton = pokaYokeDecoupeButton != null ? pokaYokeDecoupeButton : FindButton("PokaYokeDecoupeButton");
+            pokaYokeAssemblageButton = pokaYokeAssemblageButton != null ? pokaYokeAssemblageButton : FindButton("PokaYokeAssemblageButton");
+            pokaYokeControleButton = pokaYokeControleButton != null ? pokaYokeControleButton : FindButton("PokaYokeControleButton");
 
             if (machines == null || machines.Length < 3)
             {
@@ -1326,6 +1363,10 @@ namespace FlowForge.Core
             confirmActionButton = CreateOrFindHudButton(decisionPanel, "ConfirmActionButton", "Confirmer", new Vector2(680f, -44f), new Vector2(150f, 36f));
             cancelActionButton = CreateOrFindHudButton(decisionPanel, "CancelActionButton", "Annuler", new Vector2(680f, -92f), new Vector2(150f, 32f));
             SetDecisionButtonsVisible(false);
+            pokaYokeDecoupeButton = CreateOrFindHudButton(decisionPanel, "PokaYokeDecoupeButton", "Découpe", new Vector2(680f, -44f), new Vector2(150f, 30f));
+            pokaYokeAssemblageButton = CreateOrFindHudButton(decisionPanel, "PokaYokeAssemblageButton", "Assemblage", new Vector2(680f, -84f), new Vector2(150f, 30f));
+            pokaYokeControleButton = CreateOrFindHudButton(decisionPanel, "PokaYokeControleButton", "Contrôle", new Vector2(680f, -124f), new Vector2(150f, 30f));
+            SetPokaYokeTargetButtonsVisible(false);
 
             CreateOrFindHudText(resultPanel, "ResultTitleText", "RÉSULTAT DU ROUND", new Vector2(14f, -8f), new Vector2(830f, 24f), 16, FontStyle.Bold);
             feedbackText = CreateOrFindHudText(resultPanel, "FeedbackText", "Résultat / feedback pédagogique : en attente", new Vector2(14f, -40f), new Vector2(830f, 150f), 14, FontStyle.Italic);
@@ -1454,6 +1495,40 @@ namespace FlowForge.Core
             RefreshUi("Action annulée : aucun effet appliqué.");
         }
 
+        private void BeginPokaYokeTargetSelection()
+        {
+            if (hasRoundResults || roundClosed)
+            {
+                RefreshUi("Round déjà lancé. Passe au round suivant ou redémarre avant de choisir une nouvelle action.");
+                return;
+            }
+
+            ClearPendingAction();
+            SetText(decisionPreviewText, "DÉCISION LEAN\nPoka-Yoke ciblé\n\nChoisis l'opération où installer le dispositif anti-erreur.\n\nDécoupe : sécuriser les erreurs de préparation.\nAssemblage : éviter les erreurs de montage.\nContrôle : fiabiliser le contrôle sans déplacer la qualité en fin de ligne.\n\nLe Poka-Yoke réduit les défauts à la source.");
+            if (cancelActionButton != null)
+            {
+                PositionButton(cancelActionButton, new Vector2(680f, -166f), new Vector2(150f, 32f));
+                cancelActionButton.gameObject.SetActive(true);
+            }
+
+            SetPokaYokeTargetButtonsVisible(true);
+            RefreshUi("Poka-Yoke : choisis d'abord Découpe, Assemblage ou Contrôle.");
+        }
+
+        private void SelectPokaYokeTarget(int targetIndex)
+        {
+            EnsureOperations();
+            if (targetIndex < 0 || targetIndex >= operations.Length)
+            {
+                RefreshUi("Cible Poka-Yoke invalide.");
+                return;
+            }
+
+            var operation = operations[targetIndex];
+            SelectPendingAction(LeanActionType.ApplyPokaYoke, targetIndex, "Poka-Yoke", operation.operationName, 700f, "Dispositif anti-erreur intégré au process : réduit les défauts à la source.", "Rebuts réduits sur l'opération ciblée, sans attendre le contrôle final.", "Un Poka-Yoke empêche l'erreur de se produire au lieu de la détecter trop tard.");
+            SetPokaYokeTargetButtonsVisible(false);
+        }
+
         private void SelectPendingAction(LeanActionType action, int targetIndex, string actionName, string zone, float cost, string expectedEffect, string estimatedImpact, string leanAdvice)
         {
             if (hasRoundResults || roundClosed)
@@ -1465,8 +1540,10 @@ namespace FlowForge.Core
             pendingAction = action;
             pendingActionTargetIndex = targetIndex;
             hasPendingAction = true;
+            SetPokaYokeTargetButtonsVisible(false);
+            PositionButton(cancelActionButton, new Vector2(680f, -92f), new Vector2(150f, 32f));
             var beforeAfter = BuildActionBeforeAfter(action, targetIndex);
-            SetText(decisionPreviewText, $"DÉCISION LEAN\n{actionName}\n\nZone concernée : {zone}\nCoût : {cost:0} €\n\n{beforeAfter}Impact attendu : {estimatedImpact}\nConseil Lean : {leanAdvice}");
+            SetText(decisionPreviewText, $"DÉCISION LEAN\n{actionName}\n\nZone concernée : {zone}\nCoût : {cost:0} €\nEffet attendu : {expectedEffect}\n\n{beforeAfter}Impact attendu : {estimatedImpact}\nConseil Lean : {leanAdvice}");
             SetDecisionButtonsVisible(true);
             RefreshUi($"Action sélectionnée : {actionName}. Confirme pour l'appliquer ou annule pour comparer.");
         }
@@ -1478,6 +1555,7 @@ namespace FlowForge.Core
             hasPendingAction = false;
             SetText(decisionPreviewText, "Sélectionne une action Lean pour comparer son coût, son effet et son impact.");
             SetDecisionButtonsVisible(false);
+            SetPokaYokeTargetButtonsVisible(false);
         }
 
 
@@ -1494,17 +1572,130 @@ namespace FlowForge.Core
             }
         }
 
+        private void SetPokaYokeTargetButtonsVisible(bool visible)
+        {
+            if (pokaYokeDecoupeButton != null)
+            {
+                pokaYokeDecoupeButton.gameObject.SetActive(visible);
+            }
+
+            if (pokaYokeAssemblageButton != null)
+            {
+                pokaYokeAssemblageButton.gameObject.SetActive(visible);
+            }
+
+            if (pokaYokeControleButton != null)
+            {
+                pokaYokeControleButton.gameObject.SetActive(visible);
+            }
+        }
+
+        private static void PositionButton(Button button, Vector2 position, Vector2 size)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            var rect = button.GetComponent<RectTransform>();
+            if (rect == null)
+            {
+                return;
+            }
+
+            rect.anchoredPosition = position;
+            rect.sizeDelta = size;
+        }
+
         private string BuildActionBeforeAfter(LeanActionType action, int targetIndex)
         {
-            if (action != LeanActionType.ImproveMachine || targetIndex < 0 || targetIndex >= operations.Length)
+            EnsureOperations();
+            if (action == LeanActionType.RebalanceLine)
             {
-                return "Avant : état actuel du process\nAprès : effet attendu sur le flux\n";
+                return BuildLineBalanceAnalysis();
+            }
+
+            if (targetIndex < 0 || targetIndex >= operations.Length)
+            {
+                return action == LeanActionType.ApplyStandardWork
+                    ? BuildQualityBeforeAfterForAll(0.9f)
+                    : "Avant : état actuel du process\nAprès : effet attendu sur le flux\n";
             }
 
             var operation = operations[targetIndex];
-            var afterCycle = Mathf.Max(0.5f, operation.cycleTime * 0.92f);
-            var gain = operation.cycleTime - afterCycle;
-            return $"Avant : {operation.operationName} {operation.cycleTime:0.0}s/cycle\nAprès : {afterCycle:0.0}s/cycle\nGain estimé : -{gain:0.0}s\n";
+            if (action == LeanActionType.ApplyPokaYoke)
+            {
+                var afterDefectRate = Mathf.Clamp01(operation.defectRate * 0.5f);
+                return $"Défauts actuels : {operation.defectRate:P0}\nDéfauts après action : {afterDefectRate:P0}\nGain estimé : -{(operation.defectRate - afterDefectRate) * 100f:0} points de défaut\n";
+            }
+
+            if (action == LeanActionType.ImproveMachine)
+            {
+                var afterCycle = Mathf.Max(0.5f, operation.cycleTime * 0.92f);
+                var gain = operation.cycleTime - afterCycle;
+                var afterDefectRate = Mathf.Clamp01(operation.defectRate * 0.94f);
+                return $"Avant : {operation.operationName} {operation.cycleTime:0.0}s/cycle | défauts {operation.defectRate:P0}\nAprès : {afterCycle:0.0}s/cycle | défauts {afterDefectRate:P0}\nGain estimé : -{gain:0.0}s et -{(operation.defectRate - afterDefectRate) * 100f:0.0} point(s) de défaut\n";
+            }
+
+            return "Avant : état actuel du process\nAprès : effet attendu sur le flux\n";
+        }
+
+        private string BuildQualityBeforeAfterForAll(float defectMultiplier)
+        {
+            EnsureOperations();
+            var lines = "Défauts actuels / après standardisation\n";
+            foreach (var operation in operations)
+            {
+                var afterDefectRate = Mathf.Clamp01(operation.defectRate * defectMultiplier);
+                lines += $"{operation.operationName} : {operation.defectRate:P0} → {afterDefectRate:P0}\n";
+            }
+
+            return lines;
+        }
+
+        private string BuildLineBalanceAnalysis()
+        {
+            EnsureOperations();
+            PrepareLineTasksFromOperations();
+            var bottleneck = GetBottleneckIndex();
+            var bottleneckOperation = GetOperationAtOrFallback(bottleneck);
+            var helper = GetHighestCapacityOperation();
+            var helperIndex = GetOperationIndex(helper);
+            var movedTime = Mathf.Min(bottleneckOperation.cycleTime * 0.08f, 1.2f);
+            var projectedBottleneckCycle = Mathf.Max(0.5f, bottleneckOperation.cycleTime - movedTime);
+
+            var lines = "Analyse de charge\n";
+            for (var i = 0; i < operations.Length; i++)
+            {
+                var operation = operations[i];
+                var gap = operation.cycleTime - bottleneckOperation.cycleTime;
+                var label = i == bottleneck ? " | GOULOT" : $" | écart {gap:0.0}s";
+                lines += $"{operation.operationName} : {operation.cycleTime:0.0}s/cycle | capacité {GetCapacity(operation):0} pcs{label}\n";
+            }
+
+            lines += $"\nDiagnostic : {bottleneckOperation.operationName} limite le débit global.\n";
+            lines += $"Avant : {bottleneckOperation.operationName} {bottleneckOperation.cycleTime:0.0}s/cycle\n";
+            lines += $"Après confirmation : {projectedBottleneckCycle:0.0}s/cycle estimé\n";
+            lines += $"Gain sur goulot : -{movedTime:0.0}s\n";
+            lines += $"Tâche préparée : transférable vers {helper.operationName} ({helperIndex + 1}).\n";
+            return lines;
+        }
+
+        private void PrepareLineTasksFromOperations()
+        {
+            EnsureOperations();
+            lineTasks = new LineTask[operations.Length];
+            for (var i = 0; i < operations.Length; i++)
+            {
+                var operation = operations[i];
+                lineTasks[i] = new LineTask
+                {
+                    taskName = $"{operation.operationName} - tâche principale",
+                    duration = operation.cycleTime,
+                    assignedOperationIndex = i,
+                    canMove = i == GetBottleneckIndex()
+                };
+            }
         }
 
         private void RefreshCycleCards()
