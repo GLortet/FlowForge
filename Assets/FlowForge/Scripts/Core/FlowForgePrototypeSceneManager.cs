@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
@@ -141,6 +142,7 @@ namespace FlowForge.Core
         public Text scoreBusinessText;
         public Text maintenanceComplexityText;
         public Text feedbackText;
+        public Text actionToastText;
         public Text roundTitleText;
         public Text briefingText;
 
@@ -171,6 +173,8 @@ namespace FlowForge.Core
         private bool hasRoundResults;
         private bool roundClosed;
         private bool fiveSAppliedThisRound;
+        private Coroutine actionToastCoroutine;
+        private Coroutine flowFeedbackCoroutine;
 
         private void Awake()
         {
@@ -283,6 +287,7 @@ namespace FlowForge.Core
         public void StartRound()
         {
             EnsureOperations();
+            PlayProductionFlowFeedback();
             CalculateLinePreview();
             previousBottleneckCapacity = GetBottleneckCapacity();
 
@@ -392,6 +397,8 @@ namespace FlowForge.Core
             operation.maintenanceComplexity += 0.75f;
             scoreLean = Mathf.Clamp(scoreLean + 1, 0, 100);
             RegisterPlayerAction(LeanActionType.BuyParallelMachine, GetOperationIndex(operation));
+            ShowActionToast($"Action choisie : machine parallèle sur {operation.operationName}\nCoût : {cost:0} €\nEffet : capacité rapide, complexité maintenance en hausse.\nL'action sera évaluée au lancement du round.");
+            PlayMachineFeedback(operation, $"{operation.operationName} renforcée", new Color(1f, 0.82f, 0.25f));
             CalculateLinePreview();
             RefreshUi($"Machine parallèle ajoutée sur {operation.operationName}. Capacité rapide, complexité en hausse.");
         }
@@ -417,6 +424,8 @@ namespace FlowForge.Core
             operation.availability = Mathf.Clamp01(operation.availability + 0.02f);
             scoreLean = Mathf.Clamp(scoreLean + 5, 0, 100);
             RegisterPlayerAction(LeanActionType.ImproveMachine, GetOperationIndex(operation));
+            ShowActionToast($"Action choisie : Improve Machine {GetOperationIndex(operation) + 1:00}\nCoût : {cost:0} €\nEffet : cycle réduit, disponibilité améliorée, rebuts légèrement réduits.\nL'action sera évaluée au lancement du round.");
+            PlayMachineFeedback(operation, $"{operation.operationName} améliorée", new Color(1f, 0.82f, 0.25f));
             CalculateLinePreview();
             RefreshUi($"Amélioration progressive sur {operation.operationName} : cycle, qualité et TRS progressent.");
         }
@@ -464,6 +473,9 @@ namespace FlowForge.Core
             helper.cycleTime += movedTime * 0.55f;
             scoreLean = Mathf.Clamp(scoreLean + 7, 0, 100);
             RegisterPlayerAction(LeanActionType.RebalanceLine, GetOperationIndex(bottleneck));
+            ShowActionToast($"Action choisie : Rebalance Line\nCoût : {cost:0} €\nEffet : charge transférée du goulot vers une ressource plus disponible.\nL'action sera évaluée au lancement du round.");
+            PlayMachineFeedback(bottleneck, "Goulot allégé", new Color(1f, 0.45f, 0.1f));
+            PlayMachineFeedback(helper, "Charge rééquilibrée", new Color(0.35f, 1f, 0.55f));
             CalculateLinePreview();
             RefreshUi($"Rééquilibrage : temps transféré depuis {bottleneck.operationName} vers {helper.operationName}.");
         }
@@ -492,6 +504,8 @@ namespace FlowForge.Core
             stock = Mathf.Max(0, stock - 15);
             scoreLean = Mathf.Clamp(scoreLean + 10, 0, 100);
             RegisterPlayerAction(LeanActionType.Apply5S);
+            ShowActionToast($"Action choisie : Apply 5S\nCoût : {cost:0} €\nEffet : atelier clarifié, mouvements et rebuts réduits.\nL'action sera évaluée au lancement du round.");
+            PlayWorkshopFeedback("Atelier clarifié", new Color(0.35f, 1f, 0.55f));
             CalculateLinePreview();
             ColorAllMachines(balancedColor);
             RefreshUi("5S appliqué : postes clarifiés, mouvements réduits, stock et rebuts en baisse.");
@@ -512,6 +526,8 @@ namespace FlowForge.Core
 
             scoreLean = Mathf.Clamp(scoreLean + 9, 0, 100);
             RegisterPlayerAction(LeanActionType.ApplyPokaYoke);
+            ShowActionToast($"Action choisie : Poka-Yoke\nCoût : {cost:0} €\nEffet : erreurs évitées à la source, rebuts fortement réduits.\nL'action sera évaluée au lancement du round.");
+            PlayMachineFeedback(GetOperationAtOrFallback(2), "Erreurs évitées", new Color(0.25f, 0.75f, 1f));
             CalculateLinePreview();
             RefreshUi("Poka-Yoke appliqué : erreurs évitées à la source, rebuts réduits.");
         }
@@ -552,6 +568,8 @@ namespace FlowForge.Core
 
             scoreLean = Mathf.Clamp(scoreLean + 8, 0, 100);
             RegisterPlayerAction(LeanActionType.ApplyStandardWork);
+            ShowActionToast($"Action choisie : Standard Work\nCoût : {cost:0} €\nEffet : cadence stabilisée, variabilité et défauts réduits.\nL'action sera évaluée au lancement du round.");
+            PlayWorkshopFeedback("Cadence stabilisée", new Color(0.45f, 0.95f, 1f));
             CalculateLinePreview();
             RefreshUi("Standard Work appliqué : cadence plus stable, variabilité réduite.");
         }
@@ -1082,6 +1100,7 @@ namespace FlowForge.Core
             scoreBusinessText = scoreBusinessText != null ? scoreBusinessText : FindText("ScoreBusinessText");
             maintenanceComplexityText = maintenanceComplexityText != null ? maintenanceComplexityText : FindText("MaintenanceComplexityText");
             feedbackText = feedbackText != null ? feedbackText : FindText("FeedbackText");
+            actionToastText = actionToastText != null ? actionToastText : FindText("ActionToastText");
             roundTitleText = roundTitleText != null ? roundTitleText : FindText("RoundTitleText");
             briefingText = briefingText != null ? briefingText : FindText("BriefingText");
 
@@ -1211,7 +1230,9 @@ namespace FlowForge.Core
             pokaYokeButton = CreateOrFindHudButton(panelTransform, "PokaYokeButton", "Poka-Yoke", new Vector2(161f, -280f), new Vector2(135f, 32f));
             standardWorkButton = CreateOrFindHudButton(panelTransform, "StandardWorkButton", "Standard Work", new Vector2(306f, -280f), new Vector2(150f, 32f));
 
-            feedbackText = CreateOrFindHudText(panelTransform, "FeedbackText", "Résultat / feedback pédagogique : en attente", new Vector2(16f, -340f), new Vector2(780f, 92f), 15, FontStyle.Italic);
+            feedbackText = CreateOrFindHudText(panelTransform, "FeedbackText", "Résultat / feedback pédagogique : en attente", new Vector2(16f, -340f), new Vector2(780f, 82f), 15, FontStyle.Italic);
+            actionToastText = CreateOrFindHudText(panelTransform, "ActionToastText", string.Empty, new Vector2(16f, -438f), new Vector2(780f, 54f), 14, FontStyle.Bold);
+            actionToastText.color = new Color(1f, 0.92f, 0.45f);
         }
 
         private static Text CreateOrFindHudText(RectTransform parent, string objectName, string value, Vector2 position, Vector2 size, int fontSize, FontStyle fontStyle)
@@ -1250,10 +1271,170 @@ namespace FlowForge.Core
             return button;
         }
 
+
+        private MachineOperation GetOperationAtOrFallback(int index)
+        {
+            EnsureOperations();
+            if (index >= 0 && index < operations.Length)
+            {
+                return operations[index];
+            }
+
+            return GetBottleneckOperation();
+        }
+
+        private void ShowActionToast(string message)
+        {
+            if (actionToastCoroutine != null)
+            {
+                StopCoroutine(actionToastCoroutine);
+            }
+
+            actionToastCoroutine = StartCoroutine(ActionToastRoutine(message));
+            Debug.Log($"FlowForge action: {message}", this);
+        }
+
+        private IEnumerator ActionToastRoutine(string message)
+        {
+            SetText(actionToastText, message);
+            if (actionToastText != null)
+            {
+                actionToastText.gameObject.SetActive(true);
+            }
+
+            yield return new WaitForSeconds(3f);
+            SetText(actionToastText, string.Empty);
+        }
+
+        private void PlayMachineFeedback(MachineOperation operation, string floatingMessage, Color flashColor)
+        {
+            if (operation == null || operation.machine == null)
+            {
+                return;
+            }
+
+            StartCoroutine(MachinePulseRoutine(operation.machine, floatingMessage, flashColor));
+        }
+
+        private void PlayWorkshopFeedback(string floatingMessage, Color flashColor)
+        {
+            foreach (var operation in operations)
+            {
+                PlayMachineFeedback(operation, floatingMessage, flashColor);
+            }
+        }
+
+        private IEnumerator MachinePulseRoutine(Transform target, string floatingMessage, Color flashColor)
+        {
+            var originalScale = target.localScale;
+            var renderer = target.GetComponent<Renderer>() ?? target.GetComponentInChildren<Renderer>();
+            var originalColor = renderer != null ? renderer.material.color : Color.white;
+            var floatingText = CreateFloatingText(target, floatingMessage, flashColor);
+
+            const float duration = 0.42f;
+            var elapsed = 0f;
+            while (elapsed < duration)
+            {
+                elapsed += Time.deltaTime;
+                var t = Mathf.Clamp01(elapsed / duration);
+                var pulse = Mathf.Sin(t * Mathf.PI);
+                target.localScale = Vector3.Lerp(originalScale, originalScale * 1.14f, pulse);
+                if (renderer != null)
+                {
+                    renderer.material.color = Color.Lerp(originalColor, flashColor, pulse);
+                }
+
+                if (floatingText != null)
+                {
+                    floatingText.transform.position += Vector3.up * (Time.deltaTime * 0.35f);
+                    var color = floatingText.color;
+                    color.a = 1f - t;
+                    floatingText.color = color;
+                }
+
+                yield return null;
+            }
+
+            target.localScale = originalScale;
+            if (renderer != null)
+            {
+                renderer.material.color = originalColor;
+            }
+
+            if (floatingText != null)
+            {
+                Destroy(floatingText.gameObject);
+            }
+        }
+
+        private TextMesh CreateFloatingText(Transform target, string message, Color color)
+        {
+            var textObject = new GameObject($"Feedback_{target.name}");
+            textObject.transform.position = target.position + Vector3.up * 1.35f;
+            var textMesh = textObject.AddComponent<TextMesh>();
+            textMesh.text = message;
+            textMesh.font = GetLegacyUiFont();
+            textMesh.fontSize = 42;
+            textMesh.characterSize = 0.045f;
+            textMesh.anchor = TextAnchor.MiddleCenter;
+            textMesh.alignment = TextAlignment.Center;
+            textMesh.color = color;
+
+            var mainCamera = Camera.main;
+            if (mainCamera != null)
+            {
+                textObject.transform.rotation = Quaternion.LookRotation(textObject.transform.position - mainCamera.transform.position);
+            }
+
+            return textMesh;
+        }
+
+        private void PlayProductionFlowFeedback()
+        {
+            if (flowFeedbackCoroutine != null)
+            {
+                StopCoroutine(flowFeedbackCoroutine);
+            }
+
+            flowFeedbackCoroutine = StartCoroutine(ProductionFlowRoutine());
+        }
+
+        private IEnumerator ProductionFlowRoutine()
+        {
+            var flowRenderers = FindFlowRenderers();
+            foreach (var flowRenderer in flowRenderers)
+            {
+                if (flowRenderer == null)
+                {
+                    continue;
+                }
+
+                var originalColor = flowRenderer.material.color;
+                flowRenderer.material.color = new Color(1f, 0.95f, 0.25f);
+                yield return new WaitForSeconds(0.16f);
+                flowRenderer.material.color = originalColor;
+            }
+        }
+
+        private Renderer[] FindFlowRenderers()
+        {
+            var allRenderers = FindObjectsOfType<Renderer>();
+            var flowRenderers = new System.Collections.Generic.List<Renderer>();
+            foreach (var renderer in allRenderers)
+            {
+                if (renderer.name.Contains("Flow Marker") || renderer.transform.parent != null && renderer.transform.parent.name.Contains("Production Flow"))
+                {
+                    flowRenderers.Add(renderer);
+                }
+            }
+
+            return flowRenderers.ToArray();
+        }
+
         private string BuildRoundResultSummary()
         {
             var resultLabel = totalRoundProfit >= 0f ? "gain" : "perte";
-            return $"Résultat du round : {resultLabel} de {Mathf.Abs(totalRoundProfit):0} € | Score Lean : {scoreLean}/100 | Goulot : {currentBottleneck}";
+            return $"ROUND TERMINÉ\nRésultat : {resultLabel} de {Mathf.Abs(totalRoundProfit):0} € | Score Lean : {scoreLean}/100 | Goulot : {currentBottleneck}";
         }
 
         private static void ConfigureCanvasScaler(CanvasScaler scaler)
