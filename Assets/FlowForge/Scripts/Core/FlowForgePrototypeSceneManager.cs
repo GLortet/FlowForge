@@ -145,6 +145,7 @@ namespace FlowForge.Core
         public Text actionToastText;
         public Text decisionPreviewText;
         public Text shiftText;
+        public Text cycleTimesText;
         public Text roundTitleText;
         public Text briefingText;
 
@@ -184,6 +185,8 @@ namespace FlowForge.Core
         private LeanActionType pendingAction = LeanActionType.None;
         private int pendingActionTargetIndex = -1;
         private int consumedShifts;
+        private float roundActionCost;
+        private string lastConfirmedActionName = "Aucune";
 
         private void Awake()
         {
@@ -420,6 +423,8 @@ namespace FlowForge.Core
                 return;
             }
 
+            roundActionCost += cost;
+            lastConfirmedActionName = $"Machine parallèle {operation.operationName}";
             operation.parallelMachineCount += 1;
             operation.fixedCost += 450f;
             operation.maintenanceComplexity += 0.75f;
@@ -453,13 +458,16 @@ namespace FlowForge.Core
                 return;
             }
 
+            var previousCycleTime = operation.cycleTime;
+            roundActionCost += cost;
+            lastConfirmedActionName = $"Améliorer {operation.operationName}";
             operation.improvementLevel += 1;
             operation.cycleTime = Mathf.Max(0.5f, operation.cycleTime * 0.92f);
             operation.defectRate = Mathf.Clamp01(operation.defectRate * 0.94f);
             operation.availability = Mathf.Clamp01(operation.availability + 0.02f);
             scoreLean = Mathf.Clamp(scoreLean + 5, 0, 100);
             RegisterPlayerAction(LeanActionType.ImproveMachine, GetOperationIndex(operation));
-            ShowActionToast($"Action choisie : Improve Machine {GetOperationIndex(operation) + 1:00}\nCoût : {cost:0} €\nEffet : cycle réduit, disponibilité améliorée, rebuts légèrement réduits.\nL'action sera évaluée au lancement du round.");
+            ShowActionToast($"Action confirmée : Améliorer {operation.operationName} (-{previousCycleTime - operation.cycleTime:0.0}s)\nCoût : {cost:0} €\nEffet : cycle réduit, disponibilité améliorée, rebuts légèrement réduits.\nL'action sera évaluée au lancement du round.");
             PlayMachineFeedback(operation, $"{operation.operationName} améliorée", new Color(1f, 0.82f, 0.25f));
             CalculateLinePreview();
             RefreshUi($"Amélioration progressive sur {operation.operationName} : cycle, qualité et TRS progressent.");
@@ -508,6 +516,8 @@ namespace FlowForge.Core
                 return;
             }
 
+            roundActionCost += cost;
+            lastConfirmedActionName = "Rééquilibrer la ligne";
             var movedTime = Mathf.Min(bottleneck.cycleTime * 0.08f, 1.2f);
             bottleneck.cycleTime = Mathf.Max(0.5f, bottleneck.cycleTime - movedTime);
             helper.cycleTime += movedTime * 0.55f;
@@ -539,6 +549,8 @@ namespace FlowForge.Core
                 return;
             }
 
+            roundActionCost += cost;
+            lastConfirmedActionName = "Appliquer 5S";
             fiveSAppliedThisRound = true;
             foreach (var operation in operations)
             {
@@ -561,7 +573,8 @@ namespace FlowForge.Core
             const float cost = 700f;
             if (!isApplyingConfirmedAction)
             {
-                SelectPendingAction(LeanActionType.ApplyPokaYoke, 2, "Poka-Yoke", "Contrôle / qualité", cost, "Erreurs évitées à la source, rebuts fortement réduits.", "Taux de rebuts en baisse, surtout dans le round qualité.", "La qualité intégrée évite de produire vite... des défauts.");
+                var target = GetHighestDefectOperation();
+                SelectPendingAction(LeanActionType.ApplyPokaYoke, GetOperationIndex(target), "Poka-Yoke process", target.operationName, cost, "Dispositif anti-erreur intégré au process : réduit les défauts à la source.", "Taux de rebuts en baisse sur l'opération la plus risquée et sur le flux complet.", "Un poka-yoke évite l'erreur avant le contrôle final : la qualité est intégrée au process.");
                 return;
             }
             if (!SpendBudget(cost, "Poka-Yoke impossible : budget insuffisant."))
@@ -569,6 +582,9 @@ namespace FlowForge.Core
                 return;
             }
 
+            roundActionCost += cost;
+            lastConfirmedActionName = "Poka-Yoke process";
+            var pokaYokeTarget = GetHighestDefectOperation();
             foreach (var operation in operations)
             {
                 operation.defectRate = Mathf.Clamp01(operation.defectRate * 0.72f);
@@ -607,7 +623,7 @@ namespace FlowForge.Core
             const float cost = 600f;
             if (!isApplyingConfirmedAction)
             {
-                SelectPendingAction(LeanActionType.ApplyStandardWork, -1, "Standard Work", "Standardisation", cost, "Cadence stabilisée, variabilité et défauts réduits.", "TRS et qualité devraient progresser sur toute la ligne.", "Un standard clair rend l'amélioration durable et visible.");
+                SelectPendingAction(LeanActionType.ApplyStandardWork, -1, "Standardiser", "Standardisation", cost, "Cadence stabilisée, variabilité et défauts réduits.", "TRS et qualité devraient progresser sur toute la ligne.", "Un standard clair rend l'amélioration durable et visible.");
                 return;
             }
             if (!SpendBudget(cost, "Standard Work impossible : budget insuffisant."))
@@ -615,6 +631,8 @@ namespace FlowForge.Core
                 return;
             }
 
+            roundActionCost += cost;
+            lastConfirmedActionName = "Standardiser";
             foreach (var operation in operations)
             {
                 operation.cycleTime = Mathf.Max(0.5f, operation.cycleTime * 0.95f);
@@ -683,6 +701,8 @@ namespace FlowForge.Core
             leanBonus = 0f;
             customerBonus = 0f;
             totalRoundProfit = 0f;
+            roundActionCost = 0f;
+            lastConfirmedActionName = "Aucune";
             possibleProduction = 0;
             goodWatches = 0;
             scrapWatches = 0;
@@ -1094,6 +1114,7 @@ namespace FlowForge.Core
             SetText(budgetText, $"Budget : {budget:0} €");
             SetText(roundMoneyText, hasRoundResults ? $"Résultat round : {totalRoundProfit:0} €" : "Résultat round : en attente");
             SetText(shiftText, hasRoundResults ? $"Shift terminé : {consumedShifts}" : $"Shift à lancer : {consumedShifts + 1}");
+            SetText(cycleTimesText, BuildCycleTimesSummary());
             SetText(leanBonusText, $"Bonus Lean : {leanBonus:0} €");
             SetText(reputationText, $"Réputation : {reputation:0}/100");
             SetText(demandText, $"Demande client : {customerDemand}");
@@ -1165,6 +1186,7 @@ namespace FlowForge.Core
             actionToastText = actionToastText != null ? actionToastText : FindText("ActionToastText");
             decisionPreviewText = decisionPreviewText != null ? decisionPreviewText : FindText("DecisionPreviewText");
             shiftText = shiftText != null ? shiftText : FindText("ShiftText");
+            cycleTimesText = cycleTimesText != null ? cycleTimesText : FindText("CycleTimesText");
             roundTitleText = roundTitleText != null ? roundTitleText : FindText("RoundTitleText");
             briefingText = briefingText != null ? briefingText : FindText("BriefingText");
 
@@ -1283,6 +1305,7 @@ namespace FlowForge.Core
             budgetText = CreateOrFindHudText(panelTransform, "BudgetText", "Budget : 10000 €", new Vector2(266f, -140f), new Vector2(210f, 24f), 15, FontStyle.Normal);
             roundMoneyText = CreateOrFindHudText(panelTransform, "RoundMoneyText", "Résultat round : en attente", new Vector2(486f, -140f), new Vector2(280f, 24f), 15, FontStyle.Bold);
             shiftText = CreateOrFindHudText(panelTransform, "ShiftText", "Shift à lancer : 1", new Vector2(16f, -164f), new Vector2(220f, 22f), 14, FontStyle.Bold);
+            cycleTimesText = CreateOrFindHudText(panelTransform, "CycleTimesText", "Machines : temps de cycle à charger", new Vector2(245f, -164f), new Vector2(540f, 44f), 13, FontStyle.Normal);
 
             startRoundButton = CreateOrFindHudButton(panelTransform, "StartRoundButton", "Start Round", new Vector2(16f, -188f), new Vector2(135f, 32f));
             restartPuzzleRoundButton = CreateOrFindHudButton(panelTransform, "RestartPuzzleRoundButton", "Restart Round", new Vector2(161f, -188f), new Vector2(145f, 32f));
@@ -1291,15 +1314,16 @@ namespace FlowForge.Core
             improveMachine01Button = CreateOrFindHudButton(panelTransform, "ImproveMachine01Button", "Améliorer Découpe", new Vector2(16f, -236f), new Vector2(176f, 32f));
             improveMachine02Button = CreateOrFindHudButton(panelTransform, "ImproveMachine02Button", "Améliorer Assemblage", new Vector2(202f, -236f), new Vector2(176f, 32f));
             improveMachine03Button = CreateOrFindHudButton(panelTransform, "ImproveMachine03Button", "Améliorer Contrôle", new Vector2(388f, -236f), new Vector2(176f, 32f));
-            rebalanceLineButton = CreateOrFindHudButton(panelTransform, "RebalanceLineButton", "Rebalance Line", new Vector2(574f, -236f), new Vector2(160f, 32f));
+            rebalanceLineButton = CreateOrFindHudButton(panelTransform, "RebalanceLineButton", "Rééquilibrer Ligne", new Vector2(574f, -236f), new Vector2(160f, 32f));
 
-            apply5SButton = CreateOrFindHudButton(panelTransform, "Apply5SButton", "Apply 5S", new Vector2(16f, -280f), new Vector2(135f, 32f));
+            apply5SButton = CreateOrFindHudButton(panelTransform, "Apply5SButton", "Appliquer 5S", new Vector2(16f, -280f), new Vector2(135f, 32f));
             pokaYokeButton = CreateOrFindHudButton(panelTransform, "PokaYokeButton", "Poka-Yoke", new Vector2(161f, -280f), new Vector2(135f, 32f));
-            standardWorkButton = CreateOrFindHudButton(panelTransform, "StandardWorkButton", "Standard Work", new Vector2(306f, -280f), new Vector2(150f, 32f));
+            standardWorkButton = CreateOrFindHudButton(panelTransform, "StandardWorkButton", "Standardiser", new Vector2(306f, -280f), new Vector2(150f, 32f));
 
             decisionPreviewText = CreateOrFindHudText(panelTransform, "DecisionPreviewText", "Décision Lean : sélectionne une action pour voir son coût, son effet et son impact estimé.", new Vector2(16f, -320f), new Vector2(560f, 86f), 14, FontStyle.Normal);
             confirmActionButton = CreateOrFindHudButton(panelTransform, "ConfirmActionButton", "Confirmer", new Vector2(592f, -320f), new Vector2(100f, 32f));
             cancelActionButton = CreateOrFindHudButton(panelTransform, "CancelActionButton", "Annuler", new Vector2(702f, -320f), new Vector2(90f, 32f));
+            SetDecisionButtonsVisible(false);
             feedbackText = CreateOrFindHudText(panelTransform, "FeedbackText", "Résultat / feedback pédagogique : en attente", new Vector2(16f, -414f), new Vector2(780f, 70f), 15, FontStyle.Italic);
             actionToastText = CreateOrFindHudText(panelTransform, "ActionToastText", string.Empty, new Vector2(16f, -488f), new Vector2(780f, 24f), 14, FontStyle.Bold);
             actionToastText.color = new Color(1f, 0.92f, 0.45f);
@@ -1398,7 +1422,9 @@ namespace FlowForge.Core
             pendingAction = action;
             pendingActionTargetIndex = targetIndex;
             hasPendingAction = true;
-            SetText(decisionPreviewText, $"DÉCISION LEAN\\nAction : {actionName}\\nZone : {zone}\\nCoût : {cost:0} €\\nEffet attendu : {expectedEffect}\\nImpact estimé : {estimatedImpact}\\nConseil Lean : {leanAdvice}");
+            var beforeAfter = BuildActionBeforeAfter(action, targetIndex);
+            SetText(decisionPreviewText, $"DÉCISION LEAN\n{actionName}\n\nZone concernée : {zone}\nCoût : {cost:0} €\n\n{beforeAfter}Impact attendu : {estimatedImpact}\nConseil Lean : {leanAdvice}");
+            SetDecisionButtonsVisible(true);
             RefreshUi($"Action sélectionnée : {actionName}. Confirme pour l'appliquer ou annule pour comparer.");
         }
 
@@ -1407,7 +1433,67 @@ namespace FlowForge.Core
             pendingAction = LeanActionType.None;
             pendingActionTargetIndex = -1;
             hasPendingAction = false;
-            SetText(decisionPreviewText, "Décision Lean : sélectionne une action pour voir son coût, son effet et son impact estimé.");
+            SetText(decisionPreviewText, "Sélectionne une action Lean pour comparer son coût, son effet et son impact.");
+            SetDecisionButtonsVisible(false);
+        }
+
+
+        private void SetDecisionButtonsVisible(bool visible)
+        {
+            if (confirmActionButton != null)
+            {
+                confirmActionButton.gameObject.SetActive(visible);
+            }
+
+            if (cancelActionButton != null)
+            {
+                cancelActionButton.gameObject.SetActive(visible);
+            }
+        }
+
+        private string BuildActionBeforeAfter(LeanActionType action, int targetIndex)
+        {
+            if (action != LeanActionType.ImproveMachine || targetIndex < 0 || targetIndex >= operations.Length)
+            {
+                return "Avant : état actuel du process\nAprès : effet attendu sur le flux\n";
+            }
+
+            var operation = operations[targetIndex];
+            var afterCycle = Mathf.Max(0.5f, operation.cycleTime * 0.92f);
+            var gain = operation.cycleTime - afterCycle;
+            return $"Avant : {operation.operationName} {operation.cycleTime:0.0}s/cycle\nAprès : {afterCycle:0.0}s/cycle\nGain estimé : -{gain:0.0}s\n";
+        }
+
+        private string BuildCycleTimesSummary()
+        {
+            EnsureOperations();
+            var bottleneck = GetBottleneckIndex();
+            var lines = "MACHINES / TEMPS DE CYCLE\n";
+            for (var i = 0; i < operations.Length; i++)
+            {
+                var operation = operations[i];
+                var bottleneckLabel = i == bottleneck ? "  <color=#FF9A2E>GOULOT</color>" : string.Empty;
+                lines += $"{operation.operationName} : {operation.cycleTime:0.0}s | capacité {GetCapacity(operation):0} pcs{bottleneckLabel}\n";
+            }
+
+            return lines.TrimEnd();
+        }
+
+        private MachineOperation GetHighestDefectOperation()
+        {
+            EnsureOperations();
+            var selected = operations[0];
+            var highestDefectRate = float.MinValue;
+            foreach (var operation in operations)
+            {
+                if (operation.defectRate > highestDefectRate)
+                {
+                    highestDefectRate = operation.defectRate;
+                    selected = operation;
+                }
+            }
+
+            return selected;
         }
 
         private MachineOperation GetOperationAtOrFallback(int index)
@@ -1572,7 +1658,7 @@ namespace FlowForge.Core
         private string BuildRoundResultSummary()
         {
             var resultLabel = totalRoundProfit >= 0f ? "gain" : "perte";
-            return $"ROUND TERMINÉ\nRésultat : {resultLabel} de {Mathf.Abs(totalRoundProfit):0} € | Score Lean : {scoreLean}/100 | Goulot : {currentBottleneck}";
+            return $"ROUND TERMINÉ\nRésultat : {resultLabel} de {Mathf.Abs(totalRoundProfit):0} €\nBonnes pièces : {goodWatches} | Rebuts : {scrapWatches}\nChiffre d'affaires : {revenue:0} € | Coûts production : {productionCost:0} €\nCoût action Lean : {roundActionCost:0} € déjà déduit à la confirmation ({lastConfirmedActionName})\nBonus Lean/client : {leanBonus + customerBonus:0} €\nScore Lean : {scoreLean}/100 | Goulot : {currentBottleneck}";
         }
 
         private static void ConfigureCanvasScaler(CanvasScaler scaler)
@@ -1596,6 +1682,7 @@ namespace FlowForge.Core
             text.alignment = TextAnchor.MiddleLeft;
             text.horizontalOverflow = HorizontalWrapMode.Wrap;
             text.verticalOverflow = VerticalWrapMode.Overflow;
+            text.supportRichText = true;
             text.color = Color.white;
 
             var rect = text.rectTransform;
