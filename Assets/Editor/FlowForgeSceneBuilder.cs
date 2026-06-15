@@ -159,40 +159,40 @@ public static class FlowForgeSceneBuilder
         eventSystem.AddComponent<EventSystem>();
         eventSystem.AddComponent<StandaloneInputModule>();
 
-        var canvasObject = new GameObject("Canvas - Lean HUD");
+        var canvasObject = new GameObject("Canvas");
         var canvas = canvasObject.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvasObject.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        ConfigureCanvasScaler(canvasObject.AddComponent<CanvasScaler>());
         canvasObject.AddComponent<GraphicRaycaster>();
 
         var panel = CreatePanel(canvasObject.transform);
-        var title = CreateText(panel, "RoundTitleText", "Round 1 — Goulot évident", new Vector2(18f, -14f), new Vector2(800f, 34f), 22, TextAnchor.MiddleLeft);
+        var title = CreateText(panel, "RoundTitleText", "Round 1 — Goulot évident", new Vector2(16f, -10f), new Vector2(780f, 28f), 20, TextAnchor.MiddleLeft);
         title.fontStyle = FontStyle.Bold;
-        var briefing = CreateText(panel, "BriefingText", "Briefing : observez le goulot et choisissez une action Lean.", new Vector2(18f, -54f), new Vector2(805f, 70f), 15, TextAnchor.UpperLeft);
-        var feedback = CreateText(panel, "FeedbackText", "Feedback pédagogique : choisissez une action, puis lancez le round.", new Vector2(18f, -132f), new Vector2(805f, 56f), 15, TextAnchor.UpperLeft);
+        var briefing = CreateText(panel, "BriefingText", "Briefing : observez le goulot et choisissez une action Lean.", new Vector2(16f, -42f), new Vector2(780f, 58f), 14, TextAnchor.UpperLeft);
+        var feedback = CreateText(panel, "FeedbackText", "Résultat / feedback pédagogique : en attente", new Vector2(16f, -340f), new Vector2(780f, 92f), 15, TextAnchor.UpperLeft);
         feedback.fontStyle = FontStyle.Italic;
 
-        var score = CreateText(panel, "ScoreLeanText", "Score Lean : 40/100", new Vector2(18f, -205f), new Vector2(245f, 26f), 16, TextAnchor.MiddleLeft);
+        var score = CreateText(panel, "ScoreLeanText", "Score Lean : 40/100", new Vector2(16f, -112f), new Vector2(210f, 24f), 15, TextAnchor.MiddleLeft);
         score.fontStyle = FontStyle.Bold;
-        var scraps = CreateText(panel, "RebutsText", "Rebuts : 18 %", new Vector2(285f, -205f), new Vector2(220f, 26f), 16, TextAnchor.MiddleLeft);
-        var trs = CreateText(panel, "TRSText", "TRS : 62 %", new Vector2(525f, -205f), new Vector2(180f, 26f), 16, TextAnchor.MiddleLeft);
-        var stock = CreateText(panel, "StockText", "Stock : 120", new Vector2(18f, -236f), new Vector2(200f, 26f), 16, TextAnchor.MiddleLeft);
-        var bottleneck = CreateText(panel, "BottleneckText", "Goulot : -", new Vector2(285f, -236f), new Vector2(220f, 26f), 16, TextAnchor.MiddleLeft);
-        var budget = CreateText(panel, "BudgetText", "Budget : 10000 €", new Vector2(525f, -236f), new Vector2(230f, 26f), 16, TextAnchor.MiddleLeft);
-        var roundMoney = CreateText(panel, "RoundMoneyText", "Profit round : 0 €", new Vector2(18f, -267f), new Vector2(260f, 26f), 16, TextAnchor.MiddleLeft);
+        var scraps = CreateText(panel, "RebutsText", "Rebuts : 18 %", new Vector2(236f, -112f), new Vector2(160f, 24f), 15, TextAnchor.MiddleLeft);
+        var trs = CreateText(panel, "TRSText", "TRS : 62 %", new Vector2(406f, -112f), new Vector2(140f, 24f), 15, TextAnchor.MiddleLeft);
+        var stock = CreateText(panel, "StockText", "Stock : 120", new Vector2(556f, -112f), new Vector2(140f, 24f), 15, TextAnchor.MiddleLeft);
+        var bottleneck = CreateText(panel, "BottleneckText", "Goulot : -", new Vector2(16f, -140f), new Vector2(240f, 24f), 15, TextAnchor.MiddleLeft);
+        var budget = CreateText(panel, "BudgetText", "Budget : 10000 €", new Vector2(266f, -140f), new Vector2(210f, 24f), 15, TextAnchor.MiddleLeft);
+        var roundMoney = CreateText(panel, "RoundMoneyText", "Résultat round : en attente", new Vector2(486f, -140f), new Vector2(280f, 24f), 15, TextAnchor.MiddleLeft);
 
-        var startRound = CreateButton(panel, "StartRoundButton", "Start Round", new Vector2(18f, -318f), new Vector2(150f, 38f));
-        var nextRound = CreateButton(panel, "NextPuzzleRoundButton", "Next Round", new Vector2(180f, -318f), new Vector2(150f, 38f));
-        var restartRound = CreateButton(panel, "RestartPuzzleRoundButton", "Restart Round", new Vector2(342f, -318f), new Vector2(165f, 38f));
+        var startRound = CreateButton(panel, "StartRoundButton", "Start Round", new Vector2(16f, -188f), new Vector2(135f, 32f));
+        var nextRound = CreateButton(panel, "NextPuzzleRoundButton", "Next Round", new Vector2(316f, -188f), new Vector2(135f, 32f));
+        var restartRound = CreateButton(panel, "RestartPuzzleRoundButton", "Restart Round", new Vector2(161f, -188f), new Vector2(145f, 32f));
 
-        var improve01 = CreateButton(panel, "ImproveMachine01Button", "Improve Machine 01", new Vector2(18f, -372f), new Vector2(185f, 38f));
-        var improve02 = CreateButton(panel, "ImproveMachine02Button", "Improve Machine 02", new Vector2(215f, -372f), new Vector2(185f, 38f));
-        var improve03 = CreateButton(panel, "ImproveMachine03Button", "Improve Machine 03", new Vector2(412f, -372f), new Vector2(185f, 38f));
-        var rebalance = CreateButton(panel, "RebalanceLineButton", "Rebalance Line", new Vector2(609f, -372f), new Vector2(170f, 38f));
+        var improve01 = CreateButton(panel, "ImproveMachine01Button", "Improve Machine 01", new Vector2(16f, -236f), new Vector2(176f, 32f));
+        var improve02 = CreateButton(panel, "ImproveMachine02Button", "Improve Machine 02", new Vector2(202f, -236f), new Vector2(176f, 32f));
+        var improve03 = CreateButton(panel, "ImproveMachine03Button", "Improve Machine 03", new Vector2(388f, -236f), new Vector2(176f, 32f));
+        var rebalance = CreateButton(panel, "RebalanceLineButton", "Rebalance Line", new Vector2(574f, -236f), new Vector2(160f, 32f));
 
-        var apply5S = CreateButton(panel, "Apply5SButton", "Apply 5S", new Vector2(18f, -426f), new Vector2(150f, 38f));
-        var pokaYoke = CreateButton(panel, "PokaYokeButton", "Poka-Yoke", new Vector2(180f, -426f), new Vector2(150f, 38f));
-        var standardWork = CreateButton(panel, "StandardWorkButton", "Standard Work", new Vector2(342f, -426f), new Vector2(165f, 38f));
+        var apply5S = CreateButton(panel, "Apply5SButton", "Apply 5S", new Vector2(16f, -280f), new Vector2(135f, 32f));
+        var pokaYoke = CreateButton(panel, "PokaYokeButton", "Poka-Yoke", new Vector2(161f, -280f), new Vector2(135f, 32f));
+        var standardWork = CreateButton(panel, "StandardWorkButton", "Standard Work", new Vector2(306f, -280f), new Vector2(150f, 32f));
 
         return new HudReferences(
             title, briefing, feedback,
@@ -204,7 +204,7 @@ public static class FlowForgeSceneBuilder
 
     private static RectTransform CreatePanel(Transform parent)
     {
-        var panelObject = new GameObject("Lean KPI Panel");
+        var panelObject = new GameObject("FlowForgePuzzleHudPanel");
         panelObject.transform.SetParent(parent, false);
         var image = panelObject.AddComponent<Image>();
         image.color = new Color(0.035f, 0.045f, 0.07f, 0.86f);
@@ -214,8 +214,20 @@ public static class FlowForgeSceneBuilder
         rect.anchorMax = new Vector2(0f, 1f);
         rect.pivot = new Vector2(0f, 1f);
         rect.anchoredPosition = new Vector2(20f, -20f);
-        rect.sizeDelta = new Vector2(860f, 650f);
+        rect.sizeDelta = new Vector2(820f, 520f);
         return rect;
+    }
+
+    private static void ConfigureCanvasScaler(CanvasScaler scaler)
+    {
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920f, 1080f);
+        scaler.matchWidthOrHeight = 0.5f;
+    }
+
+    private static Font GetLegacyUiFont()
+    {
+        return Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
     }
 
     private static Text CreateText(Transform parent, string name, string value, Vector2 position, Vector2 size, int fontSize, TextAnchor anchor)
@@ -224,7 +236,7 @@ public static class FlowForgeSceneBuilder
         textObject.transform.SetParent(parent, false);
         var text = textObject.AddComponent<Text>();
         text.text = value;
-        text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        text.font = GetLegacyUiFont();
         text.fontSize = fontSize;
         text.alignment = anchor;
         text.color = Color.white;
@@ -253,7 +265,7 @@ public static class FlowForgeSceneBuilder
         rect.sizeDelta = size;
 
         var button = buttonObject.AddComponent<Button>();
-        var labelText = CreateText(buttonObject.transform, "Label", label, Vector2.zero, size, 18, TextAnchor.MiddleCenter);
+        var labelText = CreateText(buttonObject.transform, "Label", label, Vector2.zero, size, 13, TextAnchor.MiddleCenter);
         labelText.color = new Color(0.08f, 0.06f, 0.02f);
         labelText.rectTransform.anchorMin = Vector2.zero;
         labelText.rectTransform.anchorMax = Vector2.one;

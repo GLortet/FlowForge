@@ -229,6 +229,12 @@ namespace FlowForge.Core
                 return;
             }
 
+            if (!roundClosed)
+            {
+                RefreshUi("Lance d'abord le round pour obtenir le résultat.");
+                return;
+            }
+
             currentPuzzleRoundIndex = (currentPuzzleRoundIndex + 1) % puzzleRounds.Length;
             LoadCurrentPuzzleRound();
         }
@@ -264,11 +270,11 @@ namespace FlowForge.Core
             if (lastActionWasGoodChoice)
             {
                 scoreLean = Mathf.Clamp(scoreLean + 4, 0, 100);
-                RefreshUi($"Bon choix Lean. {round.successFeedback}\nConseil : {round.leanAdvice}");
+                RefreshUi($"{BuildRoundResultSummary()}\nBon choix Lean. {round.successFeedback}\nConseil : {round.leanAdvice}");
             }
             else
             {
-                RefreshUi($"Choix discutable. {round.failureFeedback}\nConseil : {round.leanAdvice}");
+                RefreshUi($"{BuildRoundResultSummary()}\nChoix discutable. {round.failureFeedback}\nConseil : {round.leanAdvice}");
             }
 
             return lastActionWasGoodChoice;
@@ -1007,7 +1013,7 @@ namespace FlowForge.Core
             SetText(trsText, $"TRS : {trs:P0}");
             SetText(stockText, $"Stock : {stock}");
             SetText(budgetText, $"Budget : {budget:0} €");
-            SetText(roundMoneyText, $"Argent round : {totalRoundProfit:0} €");
+            SetText(roundMoneyText, hasRoundResults ? $"Résultat round : {totalRoundProfit:0} €" : "Résultat round : en attente");
             SetText(leanBonusText, $"Bonus Lean : {leanBonus:0} €");
             SetText(reputationText, $"Réputation : {reputation:0}/100");
             SetText(demandText, $"Demande client : {customerDemand}");
@@ -1132,29 +1138,24 @@ namespace FlowForge.Core
 
         private void EnsurePuzzleHud()
         {
-            if (roundTitleText != null && briefingText != null && feedbackText != null &&
-                startRoundButton != null && nextPuzzleRoundButton != null && restartPuzzleRoundButton != null &&
-                improveMachine01Button != null && improveMachine02Button != null && improveMachine03Button != null &&
-                rebalanceLineButton != null && apply5SButton != null && pokaYokeButton != null && standardWorkButton != null)
-            {
-                return;
-            }
-
             var canvas = FindObjectOfType<Canvas>();
             if (canvas == null)
             {
                 var canvasObject = new GameObject("Canvas");
                 canvas = canvasObject.AddComponent<Canvas>();
                 canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-                canvasObject.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                ConfigureCanvasScaler(canvasObject.AddComponent<CanvasScaler>());
                 canvasObject.AddComponent<GraphicRaycaster>();
             }
             else
             {
-                if (canvas.GetComponent<CanvasScaler>() == null)
+                var scaler = canvas.GetComponent<CanvasScaler>();
+                if (scaler == null)
                 {
-                    canvas.gameObject.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                    scaler = canvas.gameObject.AddComponent<CanvasScaler>();
                 }
+
+                ConfigureCanvasScaler(scaler);
 
                 if (canvas.GetComponent<GraphicRaycaster>() == null)
                 {
@@ -1175,39 +1176,42 @@ namespace FlowForge.Core
                 var panelObject = new GameObject("FlowForgePuzzleHudPanel");
                 panelObject.transform.SetParent(canvas.transform, false);
                 var panelImage = panelObject.AddComponent<Image>();
-                panelImage.color = new Color(0.035f, 0.045f, 0.07f, 0.88f);
+                panelImage.color = new Color(0.035f, 0.045f, 0.07f, 0.9f);
                 panelTransform = panelImage.rectTransform;
-                panelTransform.anchorMin = new Vector2(0f, 1f);
-                panelTransform.anchorMax = new Vector2(0f, 1f);
-                panelTransform.pivot = new Vector2(0f, 1f);
-                panelTransform.anchoredPosition = new Vector2(18f, -18f);
-                panelTransform.sizeDelta = new Vector2(860f, 650f);
             }
 
-            roundTitleText = roundTitleText != null ? roundTitleText : CreateOrFindHudText(panelTransform, "RoundTitleText", "Round courant", new Vector2(18f, -14f), new Vector2(800f, 32f), 22, FontStyle.Bold);
-            briefingText = briefingText != null ? briefingText : CreateOrFindHudText(panelTransform, "BriefingText", "Briefing", new Vector2(18f, -54f), new Vector2(805f, 70f), 15, FontStyle.Normal);
-            feedbackText = feedbackText != null ? feedbackText : CreateOrFindHudText(panelTransform, "FeedbackText", "Feedback pédagogique", new Vector2(18f, -132f), new Vector2(805f, 56f), 15, FontStyle.Italic);
+            panelTransform.anchorMin = new Vector2(0f, 1f);
+            panelTransform.anchorMax = new Vector2(0f, 1f);
+            panelTransform.pivot = new Vector2(0f, 1f);
+            panelTransform.anchoredPosition = new Vector2(18f, -18f);
+            panelTransform.sizeDelta = new Vector2(820f, 520f);
+            DisableLegacyHudSiblings(canvas.transform, panelTransform);
 
-            scoreLeanText = scoreLeanText != null ? scoreLeanText : CreateOrFindHudText(panelTransform, "ScoreLeanText", "Score Lean : 40/100", new Vector2(18f, -205f), new Vector2(245f, 26f), 16, FontStyle.Bold);
-            rebutsText = rebutsText != null ? rebutsText : CreateOrFindHudText(panelTransform, "RebutsText", "Rebuts : 18 %", new Vector2(285f, -205f), new Vector2(220f, 26f), 16, FontStyle.Normal);
-            trsText = trsText != null ? trsText : CreateOrFindHudText(panelTransform, "TRSText", "TRS : 62 %", new Vector2(525f, -205f), new Vector2(180f, 26f), 16, FontStyle.Normal);
-            stockText = stockText != null ? stockText : CreateOrFindHudText(panelTransform, "StockText", "Stock : 120", new Vector2(18f, -236f), new Vector2(200f, 26f), 16, FontStyle.Normal);
-            bottleneckText = bottleneckText != null ? bottleneckText : CreateOrFindHudText(panelTransform, "BottleneckText", "Goulot : -", new Vector2(285f, -236f), new Vector2(220f, 26f), 16, FontStyle.Normal);
-            budgetText = budgetText != null ? budgetText : CreateOrFindHudText(panelTransform, "BudgetText", "Budget : 10000 €", new Vector2(525f, -236f), new Vector2(230f, 26f), 16, FontStyle.Normal);
-            roundMoneyText = roundMoneyText != null ? roundMoneyText : CreateOrFindHudText(panelTransform, "RoundMoneyText", "Profit round : 0 €", new Vector2(18f, -267f), new Vector2(260f, 26f), 16, FontStyle.Normal);
+            roundTitleText = CreateOrFindHudText(panelTransform, "RoundTitleText", "Round courant", new Vector2(16f, -10f), new Vector2(780f, 28f), 20, FontStyle.Bold);
+            briefingText = CreateOrFindHudText(panelTransform, "BriefingText", "Briefing", new Vector2(16f, -42f), new Vector2(780f, 58f), 14, FontStyle.Normal);
 
-            startRoundButton = startRoundButton != null ? startRoundButton : CreateOrFindHudButton(panelTransform, "StartRoundButton", "Start Round", new Vector2(18f, -318f), new Vector2(150f, 38f));
-            nextPuzzleRoundButton = nextPuzzleRoundButton != null ? nextPuzzleRoundButton : CreateOrFindHudButton(panelTransform, "NextPuzzleRoundButton", "Next Round", new Vector2(180f, -318f), new Vector2(150f, 38f));
-            restartPuzzleRoundButton = restartPuzzleRoundButton != null ? restartPuzzleRoundButton : CreateOrFindHudButton(panelTransform, "RestartPuzzleRoundButton", "Restart Round", new Vector2(342f, -318f), new Vector2(165f, 38f));
+            scoreLeanText = CreateOrFindHudText(panelTransform, "ScoreLeanText", "Score Lean : 40/100", new Vector2(16f, -112f), new Vector2(210f, 24f), 15, FontStyle.Bold);
+            rebutsText = CreateOrFindHudText(panelTransform, "RebutsText", "Rebuts : 18 %", new Vector2(236f, -112f), new Vector2(160f, 24f), 15, FontStyle.Normal);
+            trsText = CreateOrFindHudText(panelTransform, "TRSText", "TRS : 62 %", new Vector2(406f, -112f), new Vector2(140f, 24f), 15, FontStyle.Normal);
+            stockText = CreateOrFindHudText(panelTransform, "StockText", "Stock : 120", new Vector2(556f, -112f), new Vector2(140f, 24f), 15, FontStyle.Normal);
+            bottleneckText = CreateOrFindHudText(panelTransform, "BottleneckText", "Goulot : -", new Vector2(16f, -140f), new Vector2(240f, 24f), 15, FontStyle.Normal);
+            budgetText = CreateOrFindHudText(panelTransform, "BudgetText", "Budget : 10000 €", new Vector2(266f, -140f), new Vector2(210f, 24f), 15, FontStyle.Normal);
+            roundMoneyText = CreateOrFindHudText(panelTransform, "RoundMoneyText", "Résultat round : en attente", new Vector2(486f, -140f), new Vector2(280f, 24f), 15, FontStyle.Bold);
 
-            improveMachine01Button = improveMachine01Button != null ? improveMachine01Button : CreateOrFindHudButton(panelTransform, "ImproveMachine01Button", "Improve Machine 01", new Vector2(18f, -372f), new Vector2(185f, 38f));
-            improveMachine02Button = improveMachine02Button != null ? improveMachine02Button : CreateOrFindHudButton(panelTransform, "ImproveMachine02Button", "Improve Machine 02", new Vector2(215f, -372f), new Vector2(185f, 38f));
-            improveMachine03Button = improveMachine03Button != null ? improveMachine03Button : CreateOrFindHudButton(panelTransform, "ImproveMachine03Button", "Improve Machine 03", new Vector2(412f, -372f), new Vector2(185f, 38f));
-            rebalanceLineButton = rebalanceLineButton != null ? rebalanceLineButton : CreateOrFindHudButton(panelTransform, "RebalanceLineButton", "Rebalance Line", new Vector2(609f, -372f), new Vector2(170f, 38f));
+            startRoundButton = CreateOrFindHudButton(panelTransform, "StartRoundButton", "Start Round", new Vector2(16f, -188f), new Vector2(135f, 32f));
+            restartPuzzleRoundButton = CreateOrFindHudButton(panelTransform, "RestartPuzzleRoundButton", "Restart Round", new Vector2(161f, -188f), new Vector2(145f, 32f));
+            nextPuzzleRoundButton = CreateOrFindHudButton(panelTransform, "NextPuzzleRoundButton", "Next Round", new Vector2(316f, -188f), new Vector2(135f, 32f));
 
-            apply5SButton = apply5SButton != null ? apply5SButton : CreateOrFindHudButton(panelTransform, "Apply5SButton", "Apply 5S", new Vector2(18f, -426f), new Vector2(150f, 38f));
-            pokaYokeButton = pokaYokeButton != null ? pokaYokeButton : CreateOrFindHudButton(panelTransform, "PokaYokeButton", "Poka-Yoke", new Vector2(180f, -426f), new Vector2(150f, 38f));
-            standardWorkButton = standardWorkButton != null ? standardWorkButton : CreateOrFindHudButton(panelTransform, "StandardWorkButton", "Standard Work", new Vector2(342f, -426f), new Vector2(165f, 38f));
+            improveMachine01Button = CreateOrFindHudButton(panelTransform, "ImproveMachine01Button", "Improve Machine 01", new Vector2(16f, -236f), new Vector2(176f, 32f));
+            improveMachine02Button = CreateOrFindHudButton(panelTransform, "ImproveMachine02Button", "Improve Machine 02", new Vector2(202f, -236f), new Vector2(176f, 32f));
+            improveMachine03Button = CreateOrFindHudButton(panelTransform, "ImproveMachine03Button", "Improve Machine 03", new Vector2(388f, -236f), new Vector2(176f, 32f));
+            rebalanceLineButton = CreateOrFindHudButton(panelTransform, "RebalanceLineButton", "Rebalance Line", new Vector2(574f, -236f), new Vector2(160f, 32f));
+
+            apply5SButton = CreateOrFindHudButton(panelTransform, "Apply5SButton", "Apply 5S", new Vector2(16f, -280f), new Vector2(135f, 32f));
+            pokaYokeButton = CreateOrFindHudButton(panelTransform, "PokaYokeButton", "Poka-Yoke", new Vector2(161f, -280f), new Vector2(135f, 32f));
+            standardWorkButton = CreateOrFindHudButton(panelTransform, "StandardWorkButton", "Standard Work", new Vector2(306f, -280f), new Vector2(150f, 32f));
+
+            feedbackText = CreateOrFindHudText(panelTransform, "FeedbackText", "Résultat / feedback pédagogique : en attente", new Vector2(16f, -340f), new Vector2(780f, 92f), 15, FontStyle.Italic);
         }
 
         private static Text CreateOrFindHudText(RectTransform parent, string objectName, string value, Vector2 position, Vector2 size, int fontSize, FontStyle fontStyle)
@@ -1215,14 +1219,59 @@ namespace FlowForge.Core
             var existing = GameObject.Find(objectName);
             if (existing != null && existing.TryGetComponent<Text>(out var existingText))
             {
+                existingText.transform.SetParent(parent, false);
+                ConfigureHudText(existingText, value, position, size, fontSize, fontStyle);
                 return existingText;
             }
 
             var textObject = new GameObject(objectName);
             textObject.transform.SetParent(parent, false);
             var text = textObject.AddComponent<Text>();
+            ConfigureHudText(text, value, position, size, fontSize, fontStyle);
+            return text;
+        }
+
+        private static Button CreateOrFindHudButton(RectTransform parent, string objectName, string label, Vector2 position, Vector2 size)
+        {
+            var existing = GameObject.Find(objectName);
+            if (existing != null && existing.TryGetComponent<Button>(out var existingButton))
+            {
+                existingButton.transform.SetParent(parent, false);
+                ConfigureHudButton(existingButton, label, position, size);
+                return existingButton;
+            }
+
+            var buttonObject = new GameObject(objectName);
+            buttonObject.transform.SetParent(parent, false);
+            var image = buttonObject.AddComponent<Image>();
+            image.color = new Color(1f, 0.72f, 0.22f);
+            var button = buttonObject.AddComponent<Button>();
+            ConfigureHudButton(button, label, position, size);
+            return button;
+        }
+
+        private string BuildRoundResultSummary()
+        {
+            var resultLabel = totalRoundProfit >= 0f ? "gain" : "perte";
+            return $"Résultat du round : {resultLabel} de {Mathf.Abs(totalRoundProfit):0} € | Score Lean : {scoreLean}/100 | Goulot : {currentBottleneck}";
+        }
+
+        private static void ConfigureCanvasScaler(CanvasScaler scaler)
+        {
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            scaler.matchWidthOrHeight = 0.5f;
+        }
+
+        private static Font GetLegacyUiFont()
+        {
+            return Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        }
+
+        private static void ConfigureHudText(Text text, string value, Vector2 position, Vector2 size, int fontSize, FontStyle fontStyle)
+        {
             text.text = value;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.font = GetLegacyUiFont();
             text.fontSize = fontSize;
             text.fontStyle = fontStyle;
             text.alignment = TextAnchor.MiddleLeft;
@@ -1236,37 +1285,57 @@ namespace FlowForge.Core
             rect.pivot = new Vector2(0f, 1f);
             rect.anchoredPosition = position;
             rect.sizeDelta = size;
-            return text;
         }
 
-        private static Button CreateOrFindHudButton(RectTransform parent, string objectName, string label, Vector2 position, Vector2 size)
+        private static void ConfigureHudButton(Button button, string label, Vector2 position, Vector2 size)
         {
-            var existing = GameObject.Find(objectName);
-            if (existing != null && existing.TryGetComponent<Button>(out var existingButton))
-            {
-                return existingButton;
-            }
-
-            var buttonObject = new GameObject(objectName);
-            buttonObject.transform.SetParent(parent, false);
-            var image = buttonObject.AddComponent<Image>();
-            image.color = new Color(1f, 0.72f, 0.22f);
-            var rect = image.rectTransform;
+            var rect = button.GetComponent<RectTransform>();
             rect.anchorMin = new Vector2(0f, 1f);
             rect.anchorMax = new Vector2(0f, 1f);
             rect.pivot = new Vector2(0f, 1f);
             rect.anchoredPosition = position;
             rect.sizeDelta = size;
 
-            var button = buttonObject.AddComponent<Button>();
-            var labelText = CreateOrFindHudText(rect, $"{objectName}Text", label, Vector2.zero, size, 15, FontStyle.Bold);
+            var image = button.GetComponent<Image>() ?? button.gameObject.AddComponent<Image>();
+            image.color = new Color(1f, 0.72f, 0.22f);
+
+            var labelTransform = button.transform.Find($"{button.name}Text") ?? button.transform.Find("Text") ?? button.transform.Find("Label");
+            Text labelText;
+            if (labelTransform != null && labelTransform.TryGetComponent<Text>(out var existingLabel))
+            {
+                labelText = existingLabel;
+            }
+            else
+            {
+                var labelObject = new GameObject($"{button.name}Text");
+                labelObject.transform.SetParent(button.transform, false);
+                labelText = labelObject.AddComponent<Text>();
+            }
+
+            ConfigureHudText(labelText, label, Vector2.zero, size, 13, FontStyle.Bold);
             labelText.alignment = TextAnchor.MiddleCenter;
             labelText.color = new Color(0.08f, 0.06f, 0.02f);
             labelText.rectTransform.anchorMin = Vector2.zero;
             labelText.rectTransform.anchorMax = Vector2.one;
             labelText.rectTransform.offsetMin = Vector2.zero;
             labelText.rectTransform.offsetMax = Vector2.zero;
-            return button;
+        }
+
+        private static void DisableLegacyHudSiblings(Transform canvasTransform, RectTransform activePanel)
+        {
+            for (var i = 0; i < canvasTransform.childCount; i++)
+            {
+                var child = canvasTransform.GetChild(i);
+                if (child == activePanel || child.IsChildOf(activePanel))
+                {
+                    continue;
+                }
+
+                if (child.name.Contains("HUD") || child.name.Contains("KPI") || child.name.Contains("Panel"))
+                {
+                    child.gameObject.SetActive(false);
+                }
+            }
         }
 
         private static Text FindText(string objectName)
