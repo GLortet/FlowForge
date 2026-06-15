@@ -146,6 +146,9 @@ namespace FlowForge.Core
         public Text decisionPreviewText;
         public Text shiftText;
         public Text cycleTimesText;
+        public Text cycleDecoupeText;
+        public Text cycleAssemblageText;
+        public Text cycleControleText;
         public Text roundTitleText;
         public Text briefingText;
 
@@ -1114,7 +1117,8 @@ namespace FlowForge.Core
             SetText(budgetText, $"Budget : {budget:0} €");
             SetText(roundMoneyText, hasRoundResults ? $"Résultat round : {totalRoundProfit:0} €" : "Résultat round : en attente");
             SetText(shiftText, hasRoundResults ? $"Shift terminé : {consumedShifts}" : $"Shift à lancer : {consumedShifts + 1}");
-            SetText(cycleTimesText, BuildCycleTimesSummary());
+            SetText(cycleTimesText, "TEMPS DE CYCLE");
+            RefreshCycleCards();
             SetText(leanBonusText, $"Bonus Lean : {leanBonus:0} €");
             SetText(reputationText, $"Réputation : {reputation:0}/100");
             SetText(demandText, $"Demande client : {customerDemand}");
@@ -1187,6 +1191,9 @@ namespace FlowForge.Core
             decisionPreviewText = decisionPreviewText != null ? decisionPreviewText : FindText("DecisionPreviewText");
             shiftText = shiftText != null ? shiftText : FindText("ShiftText");
             cycleTimesText = cycleTimesText != null ? cycleTimesText : FindText("CycleTimesText");
+            cycleDecoupeText = cycleDecoupeText != null ? cycleDecoupeText : FindText("CycleDecoupeText");
+            cycleAssemblageText = cycleAssemblageText != null ? cycleAssemblageText : FindText("CycleAssemblageText");
+            cycleControleText = cycleControleText != null ? cycleControleText : FindText("CycleControleText");
             roundTitleText = roundTitleText != null ? roundTitleText : FindText("RoundTitleText");
             briefingText = briefingText != null ? briefingText : FindText("BriefingText");
 
@@ -1277,56 +1284,92 @@ namespace FlowForge.Core
                 eventSystem.AddComponent<StandaloneInputModule>();
             }
 
-            var panelTransform = canvas.transform.Find("FlowForgePuzzleHudPanel") as RectTransform;
-            if (panelTransform == null)
+            var mainPanel = CreateOrFindHudPanel(canvas.transform, "FlowForgeMainHudPanel", new Vector2(18f, -18f), new Vector2(900f, 1040f), new Color(0.025f, 0.032f, 0.048f, 0.92f));
+            DisableLegacyHudSiblings(canvas.transform, mainPanel);
+
+            var headerPanel = CreateOrFindHudPanel(mainPanel, "Hud_Header", new Vector2(16f, -14f), new Vector2(868f, 118f), new Color(0.055f, 0.068f, 0.095f, 0.94f));
+            var kpiPanel = CreateOrFindHudPanel(mainPanel, "Hud_KpiCards", new Vector2(16f, -142f), new Vector2(868f, 88f), new Color(0.035f, 0.045f, 0.065f, 0.9f));
+            var cyclePanel = CreateOrFindHudPanel(mainPanel, "Hud_CycleCards", new Vector2(16f, -240f), new Vector2(868f, 116f), new Color(0.035f, 0.045f, 0.065f, 0.9f));
+            var actionsPanel = CreateOrFindHudPanel(mainPanel, "Hud_ActionsLean", new Vector2(16f, -366f), new Vector2(868f, 146f), new Color(0.045f, 0.038f, 0.022f, 0.92f));
+            var decisionPanel = CreateOrFindHudPanel(mainPanel, "Hud_DecisionLean", new Vector2(16f, -522f), new Vector2(868f, 248f), new Color(0.045f, 0.055f, 0.075f, 0.94f));
+            var resultPanel = CreateOrFindHudPanel(mainPanel, "Hud_ResultRound", new Vector2(16f, -780f), new Vector2(868f, 230f), new Color(0.035f, 0.05f, 0.045f, 0.94f));
+
+            roundTitleText = CreateOrFindHudText(headerPanel, "RoundTitleText", "Round courant", new Vector2(16f, -10f), new Vector2(830f, 28f), 21, FontStyle.Bold);
+            briefingText = CreateOrFindHudText(headerPanel, "BriefingText", "Briefing", new Vector2(16f, -44f), new Vector2(830f, 62f), 14, FontStyle.Normal);
+
+            scoreLeanText = CreateKpiText(kpiPanel, "ScoreLeanText", "Score Lean", 0);
+            rebutsText = CreateKpiText(kpiPanel, "RebutsText", "Rebuts", 1);
+            trsText = CreateKpiText(kpiPanel, "TRSText", "TRS", 2);
+            stockText = CreateKpiText(kpiPanel, "StockText", "Stock", 3);
+            budgetText = CreateKpiText(kpiPanel, "BudgetText", "Budget", 4);
+            shiftText = CreateKpiText(kpiPanel, "ShiftText", "Shift", 5);
+
+            cycleTimesText = CreateOrFindHudText(cyclePanel, "CycleTimesText", "TEMPS DE CYCLE", new Vector2(14f, -8f), new Vector2(830f, 22f), 15, FontStyle.Bold);
+            cycleDecoupeText = CreateMachineCycleText(cyclePanel, "CycleDecoupeText", 0, "Découpe");
+            cycleAssemblageText = CreateMachineCycleText(cyclePanel, "CycleAssemblageText", 1, "Assemblage");
+            cycleControleText = CreateMachineCycleText(cyclePanel, "CycleControleText", 2, "Contrôle");
+
+            CreateOrFindHudText(actionsPanel, "ActionsLeanTitleText", "ACTIONS LEAN", new Vector2(14f, -8f), new Vector2(830f, 22f), 15, FontStyle.Bold);
+            improveMachine01Button = CreateOrFindHudButton(actionsPanel, "ImproveMachine01Button", "Améliorer Découpe", new Vector2(14f, -38f), new Vector2(160f, 32f));
+            improveMachine02Button = CreateOrFindHudButton(actionsPanel, "ImproveMachine02Button", "Améliorer Assemblage", new Vector2(184f, -38f), new Vector2(170f, 32f));
+            improveMachine03Button = CreateOrFindHudButton(actionsPanel, "ImproveMachine03Button", "Améliorer Contrôle", new Vector2(364f, -38f), new Vector2(160f, 32f));
+            rebalanceLineButton = CreateOrFindHudButton(actionsPanel, "RebalanceLineButton", "Rééquilibrer Ligne", new Vector2(534f, -38f), new Vector2(160f, 32f));
+            apply5SButton = CreateOrFindHudButton(actionsPanel, "Apply5SButton", "Appliquer 5S", new Vector2(704f, -38f), new Vector2(145f, 32f));
+            pokaYokeButton = CreateOrFindHudButton(actionsPanel, "PokaYokeButton", "Poka-Yoke", new Vector2(14f, -82f), new Vector2(160f, 32f));
+            standardWorkButton = CreateOrFindHudButton(actionsPanel, "StandardWorkButton", "Standardiser", new Vector2(184f, -82f), new Vector2(160f, 32f));
+            startRoundButton = CreateOrFindHudButton(actionsPanel, "StartRoundButton", "Start Round", new Vector2(364f, -82f), new Vector2(150f, 32f));
+            restartPuzzleRoundButton = CreateOrFindHudButton(actionsPanel, "RestartPuzzleRoundButton", "Restart Round", new Vector2(524f, -82f), new Vector2(150f, 32f));
+            nextPuzzleRoundButton = CreateOrFindHudButton(actionsPanel, "NextPuzzleRoundButton", "Next Round", new Vector2(684f, -82f), new Vector2(150f, 32f));
+
+            CreateOrFindHudText(decisionPanel, "DecisionTitleText", "DÉCISION LEAN", new Vector2(14f, -8f), new Vector2(830f, 24f), 16, FontStyle.Bold);
+            decisionPreviewText = CreateOrFindHudText(decisionPanel, "DecisionPreviewText", "Sélectionne une action Lean pour comparer son coût, son effet et son impact.", new Vector2(14f, -40f), new Vector2(650f, 180f), 14, FontStyle.Normal);
+            confirmActionButton = CreateOrFindHudButton(decisionPanel, "ConfirmActionButton", "Confirmer", new Vector2(680f, -44f), new Vector2(150f, 36f));
+            cancelActionButton = CreateOrFindHudButton(decisionPanel, "CancelActionButton", "Annuler", new Vector2(680f, -92f), new Vector2(150f, 32f));
+            SetDecisionButtonsVisible(false);
+
+            CreateOrFindHudText(resultPanel, "ResultTitleText", "RÉSULTAT DU ROUND", new Vector2(14f, -8f), new Vector2(830f, 24f), 16, FontStyle.Bold);
+            feedbackText = CreateOrFindHudText(resultPanel, "FeedbackText", "Résultat / feedback pédagogique : en attente", new Vector2(14f, -40f), new Vector2(830f, 150f), 14, FontStyle.Italic);
+            roundMoneyText = CreateOrFindHudText(resultPanel, "RoundMoneyText", "Résultat round : en attente", new Vector2(14f, -194f), new Vector2(390f, 24f), 15, FontStyle.Bold);
+            actionToastText = CreateOrFindHudText(resultPanel, "ActionToastText", string.Empty, new Vector2(420f, -194f), new Vector2(420f, 24f), 14, FontStyle.Bold);
+            actionToastText.color = new Color(1f, 0.92f, 0.45f);
+        }
+
+        private Text CreateKpiText(RectTransform parent, string objectName, string label, int index)
+        {
+            var card = CreateOrFindHudPanel(parent, $"{objectName}_Card", new Vector2(14f + index * 141f, -34f), new Vector2(128f, 42f), new Color(0.07f, 0.085f, 0.115f, 0.96f));
+            return CreateOrFindHudText(card, objectName, label, new Vector2(8f, -7f), new Vector2(112f, 28f), 13, FontStyle.Bold);
+        }
+
+        private Text CreateMachineCycleText(RectTransform parent, string objectName, int index, string label)
+        {
+            var card = CreateOrFindHudPanel(parent, $"{objectName}_Card", new Vector2(14f + index * 284f, -38f), new Vector2(270f, 66f), new Color(0.065f, 0.075f, 0.1f, 0.96f));
+            return CreateOrFindHudText(card, objectName, label, new Vector2(10f, -8f), new Vector2(250f, 52f), 14, FontStyle.Bold);
+        }
+
+        private static RectTransform CreateOrFindHudPanel(Transform parent, string objectName, Vector2 position, Vector2 size, Color color)
+        {
+            var existing = GameObject.Find(objectName);
+            Image image;
+            if (existing != null && existing.TryGetComponent<Image>(out var existingImage))
             {
-                var panelObject = new GameObject("FlowForgePuzzleHudPanel");
-                panelObject.transform.SetParent(canvas.transform, false);
-                var panelImage = panelObject.AddComponent<Image>();
-                panelImage.color = new Color(0.035f, 0.045f, 0.07f, 0.9f);
-                panelTransform = panelImage.rectTransform;
+                image = existingImage;
+                image.transform.SetParent(parent, false);
+            }
+            else
+            {
+                var panelObject = new GameObject(objectName);
+                panelObject.transform.SetParent(parent, false);
+                image = panelObject.AddComponent<Image>();
             }
 
-            panelTransform.anchorMin = new Vector2(0f, 1f);
-            panelTransform.anchorMax = new Vector2(0f, 1f);
-            panelTransform.pivot = new Vector2(0f, 1f);
-            panelTransform.anchoredPosition = new Vector2(18f, -18f);
-            panelTransform.sizeDelta = new Vector2(820f, 520f);
-            DisableLegacyHudSiblings(canvas.transform, panelTransform);
-
-            roundTitleText = CreateOrFindHudText(panelTransform, "RoundTitleText", "Round courant", new Vector2(16f, -10f), new Vector2(780f, 28f), 20, FontStyle.Bold);
-            briefingText = CreateOrFindHudText(panelTransform, "BriefingText", "Briefing", new Vector2(16f, -42f), new Vector2(780f, 58f), 14, FontStyle.Normal);
-
-            scoreLeanText = CreateOrFindHudText(panelTransform, "ScoreLeanText", "Score Lean : 40/100", new Vector2(16f, -112f), new Vector2(210f, 24f), 15, FontStyle.Bold);
-            rebutsText = CreateOrFindHudText(panelTransform, "RebutsText", "Rebuts : 18 %", new Vector2(236f, -112f), new Vector2(160f, 24f), 15, FontStyle.Normal);
-            trsText = CreateOrFindHudText(panelTransform, "TRSText", "TRS : 62 %", new Vector2(406f, -112f), new Vector2(140f, 24f), 15, FontStyle.Normal);
-            stockText = CreateOrFindHudText(panelTransform, "StockText", "Stock : 120", new Vector2(556f, -112f), new Vector2(140f, 24f), 15, FontStyle.Normal);
-            bottleneckText = CreateOrFindHudText(panelTransform, "BottleneckText", "Goulot : -", new Vector2(16f, -140f), new Vector2(240f, 24f), 15, FontStyle.Normal);
-            budgetText = CreateOrFindHudText(panelTransform, "BudgetText", "Budget : 10000 €", new Vector2(266f, -140f), new Vector2(210f, 24f), 15, FontStyle.Normal);
-            roundMoneyText = CreateOrFindHudText(panelTransform, "RoundMoneyText", "Résultat round : en attente", new Vector2(486f, -140f), new Vector2(280f, 24f), 15, FontStyle.Bold);
-            shiftText = CreateOrFindHudText(panelTransform, "ShiftText", "Shift à lancer : 1", new Vector2(16f, -164f), new Vector2(220f, 22f), 14, FontStyle.Bold);
-            cycleTimesText = CreateOrFindHudText(panelTransform, "CycleTimesText", "Machines : temps de cycle à charger", new Vector2(245f, -164f), new Vector2(540f, 44f), 13, FontStyle.Normal);
-
-            startRoundButton = CreateOrFindHudButton(panelTransform, "StartRoundButton", "Start Round", new Vector2(16f, -188f), new Vector2(135f, 32f));
-            restartPuzzleRoundButton = CreateOrFindHudButton(panelTransform, "RestartPuzzleRoundButton", "Restart Round", new Vector2(161f, -188f), new Vector2(145f, 32f));
-            nextPuzzleRoundButton = CreateOrFindHudButton(panelTransform, "NextPuzzleRoundButton", "Next Round", new Vector2(316f, -188f), new Vector2(135f, 32f));
-
-            improveMachine01Button = CreateOrFindHudButton(panelTransform, "ImproveMachine01Button", "Améliorer Découpe", new Vector2(16f, -236f), new Vector2(176f, 32f));
-            improveMachine02Button = CreateOrFindHudButton(panelTransform, "ImproveMachine02Button", "Améliorer Assemblage", new Vector2(202f, -236f), new Vector2(176f, 32f));
-            improveMachine03Button = CreateOrFindHudButton(panelTransform, "ImproveMachine03Button", "Améliorer Contrôle", new Vector2(388f, -236f), new Vector2(176f, 32f));
-            rebalanceLineButton = CreateOrFindHudButton(panelTransform, "RebalanceLineButton", "Rééquilibrer Ligne", new Vector2(574f, -236f), new Vector2(160f, 32f));
-
-            apply5SButton = CreateOrFindHudButton(panelTransform, "Apply5SButton", "Appliquer 5S", new Vector2(16f, -280f), new Vector2(135f, 32f));
-            pokaYokeButton = CreateOrFindHudButton(panelTransform, "PokaYokeButton", "Poka-Yoke", new Vector2(161f, -280f), new Vector2(135f, 32f));
-            standardWorkButton = CreateOrFindHudButton(panelTransform, "StandardWorkButton", "Standardiser", new Vector2(306f, -280f), new Vector2(150f, 32f));
-
-            decisionPreviewText = CreateOrFindHudText(panelTransform, "DecisionPreviewText", "Décision Lean : sélectionne une action pour voir son coût, son effet et son impact estimé.", new Vector2(16f, -320f), new Vector2(560f, 86f), 14, FontStyle.Normal);
-            confirmActionButton = CreateOrFindHudButton(panelTransform, "ConfirmActionButton", "Confirmer", new Vector2(592f, -320f), new Vector2(100f, 32f));
-            cancelActionButton = CreateOrFindHudButton(panelTransform, "CancelActionButton", "Annuler", new Vector2(702f, -320f), new Vector2(90f, 32f));
-            SetDecisionButtonsVisible(false);
-            feedbackText = CreateOrFindHudText(panelTransform, "FeedbackText", "Résultat / feedback pédagogique : en attente", new Vector2(16f, -414f), new Vector2(780f, 70f), 15, FontStyle.Italic);
-            actionToastText = CreateOrFindHudText(panelTransform, "ActionToastText", string.Empty, new Vector2(16f, -488f), new Vector2(780f, 24f), 14, FontStyle.Bold);
-            actionToastText.color = new Color(1f, 0.92f, 0.45f);
+            image.color = color;
+            var rect = image.rectTransform;
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = position;
+            rect.sizeDelta = size;
+            return rect;
         }
 
         private static Text CreateOrFindHudText(RectTransform parent, string objectName, string value, Vector2 position, Vector2 size, int fontSize, FontStyle fontStyle)
@@ -1462,6 +1505,54 @@ namespace FlowForge.Core
             var afterCycle = Mathf.Max(0.5f, operation.cycleTime * 0.92f);
             var gain = operation.cycleTime - afterCycle;
             return $"Avant : {operation.operationName} {operation.cycleTime:0.0}s/cycle\nAprès : {afterCycle:0.0}s/cycle\nGain estimé : -{gain:0.0}s\n";
+        }
+
+        private void RefreshCycleCards()
+        {
+            EnsureOperations();
+            var bottleneckIndex = GetBottleneckIndex();
+            SetCycleCardStyle("CycleDecoupeText_Card", bottleneckIndex == 0);
+            SetCycleCardStyle("CycleAssemblageText_Card", bottleneckIndex == 1);
+            SetCycleCardStyle("CycleControleText_Card", bottleneckIndex == 2);
+            SetText(cycleDecoupeText, BuildMachineCycleCard(0));
+            SetText(cycleAssemblageText, BuildMachineCycleCard(1));
+            SetText(cycleControleText, BuildMachineCycleCard(2));
+        }
+
+        private static void SetCycleCardStyle(string cardName, bool isBottleneck)
+        {
+            var card = GameObject.Find(cardName);
+            if (card == null)
+            {
+                return;
+            }
+
+            if (card.TryGetComponent<Image>(out var image))
+            {
+                image.color = isBottleneck ? new Color(0.16f, 0.095f, 0.035f, 0.98f) : new Color(0.065f, 0.075f, 0.1f, 0.96f);
+            }
+
+            var outline = card.GetComponent<Outline>();
+            if (outline == null)
+            {
+                outline = card.AddComponent<Outline>();
+            }
+
+            outline.enabled = isBottleneck;
+            outline.effectColor = new Color(1f, 0.56f, 0.12f, 0.95f);
+            outline.effectDistance = new Vector2(2f, -2f);
+        }
+
+        private string BuildMachineCycleCard(int index)
+        {
+            if (index < 0 || index >= operations.Length)
+            {
+                return string.Empty;
+            }
+
+            var operation = operations[index];
+            var label = index == GetBottleneckIndex() ? "\n<color=#FF9A2E>GOULOT</color>" : string.Empty;
+            return $"{operation.operationName}\n{operation.cycleTime:0.0}s / cycle\nCapacité : {GetCapacity(operation):0} pcs{label}";
         }
 
         private string BuildCycleTimesSummary()
