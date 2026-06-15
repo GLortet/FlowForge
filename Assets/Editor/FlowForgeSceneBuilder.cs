@@ -166,17 +166,40 @@ public static class FlowForgeSceneBuilder
         canvasObject.AddComponent<GraphicRaycaster>();
 
         var panel = CreatePanel(canvasObject.transform);
-        var title = CreateText(panel, "Title", "FLOWFORGE - Prototype jouable", new Vector2(18f, -14f), new Vector2(560f, 34f), 22, TextAnchor.MiddleLeft);
+        var title = CreateText(panel, "RoundTitleText", "Round 1 — Goulot évident", new Vector2(18f, -14f), new Vector2(800f, 34f), 22, TextAnchor.MiddleLeft);
         title.fontStyle = FontStyle.Bold;
+        var briefing = CreateText(panel, "BriefingText", "Briefing : observez le goulot et choisissez une action Lean.", new Vector2(18f, -54f), new Vector2(805f, 70f), 15, TextAnchor.UpperLeft);
+        var feedback = CreateText(panel, "FeedbackText", "Feedback pédagogique : choisissez une action, puis lancez le round.", new Vector2(18f, -132f), new Vector2(805f, 56f), 15, TextAnchor.UpperLeft);
+        feedback.fontStyle = FontStyle.Italic;
 
-        var score = CreateText(panel, "Score Lean Text", "Score Lean : 55/100", new Vector2(18f, -58f), new Vector2(320f, 30f), 19, TextAnchor.MiddleLeft);
-        var scraps = CreateText(panel, "Rebuts Text", "Rebuts : 18%", new Vector2(18f, -94f), new Vector2(320f, 30f), 19, TextAnchor.MiddleLeft);
-        var trs = CreateText(panel, "TRS Text", "TRS : 62%", new Vector2(18f, -130f), new Vector2(320f, 30f), 19, TextAnchor.MiddleLeft);
-        var stock = CreateText(panel, "Stock Text", "Stock : 14", new Vector2(18f, -166f), new Vector2(320f, 30f), 19, TextAnchor.MiddleLeft);
-        var feedback = CreateText(panel, "Feedback Text", "Cliquez sur Appliquer 5S pour améliorer l'atelier.", new Vector2(18f, -212f), new Vector2(620f, 32f), 17, TextAnchor.MiddleLeft);
-        var button = CreateButton(panel, "Apply 5S Button", "Appliquer 5S", new Vector2(18f, -260f), new Vector2(220f, 48f));
+        var score = CreateText(panel, "ScoreLeanText", "Score Lean : 40/100", new Vector2(18f, -205f), new Vector2(245f, 26f), 16, TextAnchor.MiddleLeft);
+        score.fontStyle = FontStyle.Bold;
+        var scraps = CreateText(panel, "RebutsText", "Rebuts : 18 %", new Vector2(285f, -205f), new Vector2(220f, 26f), 16, TextAnchor.MiddleLeft);
+        var trs = CreateText(panel, "TRSText", "TRS : 62 %", new Vector2(525f, -205f), new Vector2(180f, 26f), 16, TextAnchor.MiddleLeft);
+        var stock = CreateText(panel, "StockText", "Stock : 120", new Vector2(18f, -236f), new Vector2(200f, 26f), 16, TextAnchor.MiddleLeft);
+        var bottleneck = CreateText(panel, "BottleneckText", "Goulot : -", new Vector2(285f, -236f), new Vector2(220f, 26f), 16, TextAnchor.MiddleLeft);
+        var budget = CreateText(panel, "BudgetText", "Budget : 10000 €", new Vector2(525f, -236f), new Vector2(230f, 26f), 16, TextAnchor.MiddleLeft);
+        var roundMoney = CreateText(panel, "RoundMoneyText", "Profit round : 0 €", new Vector2(18f, -267f), new Vector2(260f, 26f), 16, TextAnchor.MiddleLeft);
 
-        return new HudReferences(score, scraps, trs, stock, feedback, button);
+        var startRound = CreateButton(panel, "StartRoundButton", "Start Round", new Vector2(18f, -318f), new Vector2(150f, 38f));
+        var nextRound = CreateButton(panel, "NextPuzzleRoundButton", "Next Round", new Vector2(180f, -318f), new Vector2(150f, 38f));
+        var restartRound = CreateButton(panel, "RestartPuzzleRoundButton", "Restart Round", new Vector2(342f, -318f), new Vector2(165f, 38f));
+
+        var improve01 = CreateButton(panel, "ImproveMachine01Button", "Improve Machine 01", new Vector2(18f, -372f), new Vector2(185f, 38f));
+        var improve02 = CreateButton(panel, "ImproveMachine02Button", "Improve Machine 02", new Vector2(215f, -372f), new Vector2(185f, 38f));
+        var improve03 = CreateButton(panel, "ImproveMachine03Button", "Improve Machine 03", new Vector2(412f, -372f), new Vector2(185f, 38f));
+        var rebalance = CreateButton(panel, "RebalanceLineButton", "Rebalance Line", new Vector2(609f, -372f), new Vector2(170f, 38f));
+
+        var apply5S = CreateButton(panel, "Apply5SButton", "Apply 5S", new Vector2(18f, -426f), new Vector2(150f, 38f));
+        var pokaYoke = CreateButton(panel, "PokaYokeButton", "Poka-Yoke", new Vector2(180f, -426f), new Vector2(150f, 38f));
+        var standardWork = CreateButton(panel, "StandardWorkButton", "Standard Work", new Vector2(342f, -426f), new Vector2(165f, 38f));
+
+        return new HudReferences(
+            title, briefing, feedback,
+            score, scraps, trs, stock, bottleneck, budget, roundMoney,
+            startRound, nextRound, restartRound,
+            improve01, improve02, improve03, rebalance,
+            apply5S, pokaYoke, standardWork);
     }
 
     private static RectTransform CreatePanel(Transform parent)
@@ -191,7 +214,7 @@ public static class FlowForgeSceneBuilder
         rect.anchorMax = new Vector2(0f, 1f);
         rect.pivot = new Vector2(0f, 1f);
         rect.anchoredPosition = new Vector2(20f, -20f);
-        rect.sizeDelta = new Vector2(680f, 330f);
+        rect.sizeDelta = new Vector2(860f, 650f);
         return rect;
     }
 
@@ -244,13 +267,27 @@ public static class FlowForgeSceneBuilder
         var gameManagerObject = new GameObject("GameManager");
         var manager = gameManagerObject.AddComponent<FlowForgePrototypeSceneManager>();
         manager.machines = machines;
+        manager.roundTitleText = hud.RoundTitleText;
+        manager.briefingText = hud.BriefingText;
+        manager.feedbackText = hud.FeedbackText;
         manager.scoreLeanText = hud.ScoreLeanText;
         manager.rebutsText = hud.ScrapsText;
         manager.trsText = hud.TrsText;
         manager.stockText = hud.StockText;
+        manager.bottleneckText = hud.BottleneckText;
+        manager.budgetText = hud.BudgetText;
+        manager.roundMoneyText = hud.RoundMoneyText;
+        manager.startRoundButton = hud.StartRoundButton;
+        manager.nextPuzzleRoundButton = hud.NextRoundButton;
+        manager.restartPuzzleRoundButton = hud.RestartRoundButton;
+        manager.improveMachine01Button = hud.ImproveMachine01Button;
+        manager.improveMachine02Button = hud.ImproveMachine02Button;
+        manager.improveMachine03Button = hud.ImproveMachine03Button;
+        manager.rebalanceLineButton = hud.RebalanceLineButton;
         manager.apply5SButton = hud.Apply5SButton;
+        manager.pokaYokeButton = hud.PokaYokeButton;
+        manager.standardWorkButton = hud.StandardWorkButton;
 
-        UnityEventTools.AddPersistentListener(hud.Apply5SButton.onClick, manager.Apply5S);
         EditorUtility.SetDirty(manager);
         return manager;
     }
@@ -328,21 +365,55 @@ public static class FlowForgeSceneBuilder
 
     private struct HudReferences
     {
-        public HudReferences(Text scoreLeanText, Text scrapsText, Text trsText, Text stockText, Text feedbackText, Button apply5SButton)
+        public HudReferences(
+            Text roundTitleText, Text briefingText, Text feedbackText,
+            Text scoreLeanText, Text scrapsText, Text trsText, Text stockText, Text bottleneckText, Text budgetText, Text roundMoneyText,
+            Button startRoundButton, Button nextRoundButton, Button restartRoundButton,
+            Button improveMachine01Button, Button improveMachine02Button, Button improveMachine03Button, Button rebalanceLineButton,
+            Button apply5SButton, Button pokaYokeButton, Button standardWorkButton)
         {
+            RoundTitleText = roundTitleText;
+            BriefingText = briefingText;
+            FeedbackText = feedbackText;
             ScoreLeanText = scoreLeanText;
             ScrapsText = scrapsText;
             TrsText = trsText;
             StockText = stockText;
-            FeedbackText = feedbackText;
+            BottleneckText = bottleneckText;
+            BudgetText = budgetText;
+            RoundMoneyText = roundMoneyText;
+            StartRoundButton = startRoundButton;
+            NextRoundButton = nextRoundButton;
+            RestartRoundButton = restartRoundButton;
+            ImproveMachine01Button = improveMachine01Button;
+            ImproveMachine02Button = improveMachine02Button;
+            ImproveMachine03Button = improveMachine03Button;
+            RebalanceLineButton = rebalanceLineButton;
             Apply5SButton = apply5SButton;
+            PokaYokeButton = pokaYokeButton;
+            StandardWorkButton = standardWorkButton;
         }
 
+        public Text RoundTitleText;
+        public Text BriefingText;
+        public Text FeedbackText;
         public Text ScoreLeanText;
         public Text ScrapsText;
         public Text TrsText;
         public Text StockText;
-        public Text FeedbackText;
+        public Text BottleneckText;
+        public Text BudgetText;
+        public Text RoundMoneyText;
+        public Button StartRoundButton;
+        public Button NextRoundButton;
+        public Button RestartRoundButton;
+        public Button ImproveMachine01Button;
+        public Button ImproveMachine02Button;
+        public Button ImproveMachine03Button;
+        public Button RebalanceLineButton;
         public Button Apply5SButton;
+        public Button PokaYokeButton;
+        public Button StandardWorkButton;
     }
+
 }

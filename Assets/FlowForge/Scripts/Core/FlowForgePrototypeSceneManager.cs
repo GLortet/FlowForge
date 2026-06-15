@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
 namespace FlowForge.Core
 {
@@ -140,12 +141,17 @@ namespace FlowForge.Core
         public Text scoreBusinessText;
         public Text maintenanceComplexityText;
         public Text feedbackText;
+        public Text roundTitleText;
+        public Text briefingText;
 
         [Header("Optional decision buttons")]
         public Button startRoundButton;
         public Button endRoundButton;
         public Button buyParallelMachineButton;
         public Button improveMachineButton;
+        public Button improveMachine01Button;
+        public Button improveMachine02Button;
+        public Button improveMachine03Button;
         public Button rebalanceLineButton;
         public Button pokaYokeButton;
         public Button tpmButton;
@@ -170,6 +176,8 @@ namespace FlowForge.Core
         {
             if (autoFindSceneReferences)
             {
+                AutoFindMissingReferences();
+                EnsurePuzzleHud();
                 AutoFindMissingReferences();
             }
 
@@ -939,6 +947,9 @@ namespace FlowForge.Core
             WireButton(endRoundButton, EndRound);
             WireButton(buyParallelMachineButton, BuyParallelMachine);
             WireButton(improveMachineButton, ImproveMachine);
+            WireButton(improveMachine01Button, ImproveMachine01Decoupe);
+            WireButton(improveMachine02Button, ImproveMachine02Assemblage);
+            WireButton(improveMachine03Button, ImproveMachine03Controle);
             WireButton(rebalanceLineButton, RebalanceLine);
             WireButton(pokaYokeButton, ApplyPokaYoke);
             WireButton(tpmButton, ApplyTPM);
@@ -966,6 +977,9 @@ namespace FlowForge.Core
             UnwireButton(endRoundButton, EndRound);
             UnwireButton(buyParallelMachineButton, BuyParallelMachine);
             UnwireButton(improveMachineButton, ImproveMachine);
+            UnwireButton(improveMachine01Button, ImproveMachine01Decoupe);
+            UnwireButton(improveMachine02Button, ImproveMachine02Assemblage);
+            UnwireButton(improveMachine03Button, ImproveMachine03Controle);
             UnwireButton(rebalanceLineButton, RebalanceLine);
             UnwireButton(pokaYokeButton, ApplyPokaYoke);
             UnwireButton(tpmButton, ApplyTPM);
@@ -985,6 +999,9 @@ namespace FlowForge.Core
 
         private void RefreshUi(string message = null)
         {
+            var currentRound = GetCurrentPuzzleRoundOrNull();
+            SetText(roundTitleText, currentRound != null ? currentRound.title : "FlowForge — Lean Puzzle");
+            SetText(briefingText, currentRound != null ? $"Briefing : {currentRound.briefing}\nConseil Lean : {currentRound.leanAdvice}" : "Briefing : aucun round chargé.");
             SetText(scoreLeanText, $"Score Lean : {scoreLean}/100");
             SetText(rebutsText, $"Rebuts : {roundDefectRate:P0} ({scrapWatches})");
             SetText(trsText, $"TRS : {trs:P0}");
@@ -1059,13 +1076,20 @@ namespace FlowForge.Core
             scoreBusinessText = scoreBusinessText != null ? scoreBusinessText : FindText("ScoreBusinessText");
             maintenanceComplexityText = maintenanceComplexityText != null ? maintenanceComplexityText : FindText("MaintenanceComplexityText");
             feedbackText = feedbackText != null ? feedbackText : FindText("FeedbackText");
+            roundTitleText = roundTitleText != null ? roundTitleText : FindText("RoundTitleText");
+            briefingText = briefingText != null ? briefingText : FindText("BriefingText");
 
             apply5SButton = apply5SButton != null ? apply5SButton : FindButton("Apply5SButton");
             startRoundButton = startRoundButton != null ? startRoundButton : FindButton("StartRoundButton");
             endRoundButton = endRoundButton != null ? endRoundButton : FindButton("EndRoundButton");
             buyParallelMachineButton = buyParallelMachineButton != null ? buyParallelMachineButton : FindButton("BuyParallelMachineButton");
             improveMachineButton = improveMachineButton != null ? improveMachineButton : FindButton("ImproveMachineButton");
+            improveMachine01Button = improveMachine01Button != null ? improveMachine01Button : FindButton("ImproveMachine01Button");
+            improveMachine02Button = improveMachine02Button != null ? improveMachine02Button : FindButton("ImproveMachine02Button");
+            improveMachine03Button = improveMachine03Button != null ? improveMachine03Button : FindButton("ImproveMachine03Button");
             rebalanceLineButton = rebalanceLineButton != null ? rebalanceLineButton : FindButton("RebalanceLineButton");
+            pokaYokeButton = pokaYokeButton != null ? pokaYokeButton : FindButton("PokaYokeButton");
+            standardWorkButton = standardWorkButton != null ? standardWorkButton : FindButton("StandardWorkButton");
             nextPuzzleRoundButton = nextPuzzleRoundButton != null ? nextPuzzleRoundButton : FindButton("NextPuzzleRoundButton");
             restartPuzzleRoundButton = restartPuzzleRoundButton != null ? restartPuzzleRoundButton : FindButton("RestartPuzzleRoundButton");
 
@@ -1091,6 +1115,158 @@ namespace FlowForge.Core
             {
                 machines[index] = machineObject.transform;
             }
+        }
+
+
+        private PuzzleRound GetCurrentPuzzleRoundOrNull()
+        {
+            EnsurePuzzleRounds();
+            if (puzzleRounds == null || puzzleRounds.Length == 0)
+            {
+                return null;
+            }
+
+            currentPuzzleRoundIndex = Mathf.Clamp(currentPuzzleRoundIndex, 0, puzzleRounds.Length - 1);
+            return puzzleRounds[currentPuzzleRoundIndex];
+        }
+
+        private void EnsurePuzzleHud()
+        {
+            if (roundTitleText != null && briefingText != null && feedbackText != null &&
+                startRoundButton != null && nextPuzzleRoundButton != null && restartPuzzleRoundButton != null &&
+                improveMachine01Button != null && improveMachine02Button != null && improveMachine03Button != null &&
+                rebalanceLineButton != null && apply5SButton != null && pokaYokeButton != null && standardWorkButton != null)
+            {
+                return;
+            }
+
+            var canvas = FindObjectOfType<Canvas>();
+            if (canvas == null)
+            {
+                var canvasObject = new GameObject("Canvas");
+                canvas = canvasObject.AddComponent<Canvas>();
+                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+                canvasObject.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                canvasObject.AddComponent<GraphicRaycaster>();
+            }
+            else
+            {
+                if (canvas.GetComponent<CanvasScaler>() == null)
+                {
+                    canvas.gameObject.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                }
+
+                if (canvas.GetComponent<GraphicRaycaster>() == null)
+                {
+                    canvas.gameObject.AddComponent<GraphicRaycaster>();
+                }
+            }
+
+            if (FindObjectOfType<EventSystem>() == null)
+            {
+                var eventSystem = new GameObject("EventSystem");
+                eventSystem.AddComponent<EventSystem>();
+                eventSystem.AddComponent<StandaloneInputModule>();
+            }
+
+            var panelTransform = canvas.transform.Find("FlowForgePuzzleHudPanel") as RectTransform;
+            if (panelTransform == null)
+            {
+                var panelObject = new GameObject("FlowForgePuzzleHudPanel");
+                panelObject.transform.SetParent(canvas.transform, false);
+                var panelImage = panelObject.AddComponent<Image>();
+                panelImage.color = new Color(0.035f, 0.045f, 0.07f, 0.88f);
+                panelTransform = panelImage.rectTransform;
+                panelTransform.anchorMin = new Vector2(0f, 1f);
+                panelTransform.anchorMax = new Vector2(0f, 1f);
+                panelTransform.pivot = new Vector2(0f, 1f);
+                panelTransform.anchoredPosition = new Vector2(18f, -18f);
+                panelTransform.sizeDelta = new Vector2(860f, 650f);
+            }
+
+            roundTitleText = roundTitleText != null ? roundTitleText : CreateOrFindHudText(panelTransform, "RoundTitleText", "Round courant", new Vector2(18f, -14f), new Vector2(800f, 32f), 22, FontStyle.Bold);
+            briefingText = briefingText != null ? briefingText : CreateOrFindHudText(panelTransform, "BriefingText", "Briefing", new Vector2(18f, -54f), new Vector2(805f, 70f), 15, FontStyle.Normal);
+            feedbackText = feedbackText != null ? feedbackText : CreateOrFindHudText(panelTransform, "FeedbackText", "Feedback pédagogique", new Vector2(18f, -132f), new Vector2(805f, 56f), 15, FontStyle.Italic);
+
+            scoreLeanText = scoreLeanText != null ? scoreLeanText : CreateOrFindHudText(panelTransform, "ScoreLeanText", "Score Lean : 40/100", new Vector2(18f, -205f), new Vector2(245f, 26f), 16, FontStyle.Bold);
+            rebutsText = rebutsText != null ? rebutsText : CreateOrFindHudText(panelTransform, "RebutsText", "Rebuts : 18 %", new Vector2(285f, -205f), new Vector2(220f, 26f), 16, FontStyle.Normal);
+            trsText = trsText != null ? trsText : CreateOrFindHudText(panelTransform, "TRSText", "TRS : 62 %", new Vector2(525f, -205f), new Vector2(180f, 26f), 16, FontStyle.Normal);
+            stockText = stockText != null ? stockText : CreateOrFindHudText(panelTransform, "StockText", "Stock : 120", new Vector2(18f, -236f), new Vector2(200f, 26f), 16, FontStyle.Normal);
+            bottleneckText = bottleneckText != null ? bottleneckText : CreateOrFindHudText(panelTransform, "BottleneckText", "Goulot : -", new Vector2(285f, -236f), new Vector2(220f, 26f), 16, FontStyle.Normal);
+            budgetText = budgetText != null ? budgetText : CreateOrFindHudText(panelTransform, "BudgetText", "Budget : 10000 €", new Vector2(525f, -236f), new Vector2(230f, 26f), 16, FontStyle.Normal);
+            roundMoneyText = roundMoneyText != null ? roundMoneyText : CreateOrFindHudText(panelTransform, "RoundMoneyText", "Profit round : 0 €", new Vector2(18f, -267f), new Vector2(260f, 26f), 16, FontStyle.Normal);
+
+            startRoundButton = startRoundButton != null ? startRoundButton : CreateOrFindHudButton(panelTransform, "StartRoundButton", "Start Round", new Vector2(18f, -318f), new Vector2(150f, 38f));
+            nextPuzzleRoundButton = nextPuzzleRoundButton != null ? nextPuzzleRoundButton : CreateOrFindHudButton(panelTransform, "NextPuzzleRoundButton", "Next Round", new Vector2(180f, -318f), new Vector2(150f, 38f));
+            restartPuzzleRoundButton = restartPuzzleRoundButton != null ? restartPuzzleRoundButton : CreateOrFindHudButton(panelTransform, "RestartPuzzleRoundButton", "Restart Round", new Vector2(342f, -318f), new Vector2(165f, 38f));
+
+            improveMachine01Button = improveMachine01Button != null ? improveMachine01Button : CreateOrFindHudButton(panelTransform, "ImproveMachine01Button", "Improve Machine 01", new Vector2(18f, -372f), new Vector2(185f, 38f));
+            improveMachine02Button = improveMachine02Button != null ? improveMachine02Button : CreateOrFindHudButton(panelTransform, "ImproveMachine02Button", "Improve Machine 02", new Vector2(215f, -372f), new Vector2(185f, 38f));
+            improveMachine03Button = improveMachine03Button != null ? improveMachine03Button : CreateOrFindHudButton(panelTransform, "ImproveMachine03Button", "Improve Machine 03", new Vector2(412f, -372f), new Vector2(185f, 38f));
+            rebalanceLineButton = rebalanceLineButton != null ? rebalanceLineButton : CreateOrFindHudButton(panelTransform, "RebalanceLineButton", "Rebalance Line", new Vector2(609f, -372f), new Vector2(170f, 38f));
+
+            apply5SButton = apply5SButton != null ? apply5SButton : CreateOrFindHudButton(panelTransform, "Apply5SButton", "Apply 5S", new Vector2(18f, -426f), new Vector2(150f, 38f));
+            pokaYokeButton = pokaYokeButton != null ? pokaYokeButton : CreateOrFindHudButton(panelTransform, "PokaYokeButton", "Poka-Yoke", new Vector2(180f, -426f), new Vector2(150f, 38f));
+            standardWorkButton = standardWorkButton != null ? standardWorkButton : CreateOrFindHudButton(panelTransform, "StandardWorkButton", "Standard Work", new Vector2(342f, -426f), new Vector2(165f, 38f));
+        }
+
+        private static Text CreateOrFindHudText(RectTransform parent, string objectName, string value, Vector2 position, Vector2 size, int fontSize, FontStyle fontStyle)
+        {
+            var existing = GameObject.Find(objectName);
+            if (existing != null && existing.TryGetComponent<Text>(out var existingText))
+            {
+                return existingText;
+            }
+
+            var textObject = new GameObject(objectName);
+            textObject.transform.SetParent(parent, false);
+            var text = textObject.AddComponent<Text>();
+            text.text = value;
+            text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            text.fontSize = fontSize;
+            text.fontStyle = fontStyle;
+            text.alignment = TextAnchor.MiddleLeft;
+            text.horizontalOverflow = HorizontalWrapMode.Wrap;
+            text.verticalOverflow = VerticalWrapMode.Overflow;
+            text.color = Color.white;
+
+            var rect = text.rectTransform;
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = position;
+            rect.sizeDelta = size;
+            return text;
+        }
+
+        private static Button CreateOrFindHudButton(RectTransform parent, string objectName, string label, Vector2 position, Vector2 size)
+        {
+            var existing = GameObject.Find(objectName);
+            if (existing != null && existing.TryGetComponent<Button>(out var existingButton))
+            {
+                return existingButton;
+            }
+
+            var buttonObject = new GameObject(objectName);
+            buttonObject.transform.SetParent(parent, false);
+            var image = buttonObject.AddComponent<Image>();
+            image.color = new Color(1f, 0.72f, 0.22f);
+            var rect = image.rectTransform;
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = position;
+            rect.sizeDelta = size;
+
+            var button = buttonObject.AddComponent<Button>();
+            var labelText = CreateOrFindHudText(rect, $"{objectName}Text", label, Vector2.zero, size, 15, FontStyle.Bold);
+            labelText.alignment = TextAnchor.MiddleCenter;
+            labelText.color = new Color(0.08f, 0.06f, 0.02f);
+            labelText.rectTransform.anchorMin = Vector2.zero;
+            labelText.rectTransform.anchorMax = Vector2.one;
+            labelText.rectTransform.offsetMin = Vector2.zero;
+            labelText.rectTransform.offsetMax = Vector2.zero;
+            return button;
         }
 
         private static Text FindText(string objectName)
