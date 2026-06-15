@@ -1222,7 +1222,7 @@ namespace FlowForge.Core
             textObject.transform.SetParent(parent, false);
             var text = textObject.AddComponent<Text>();
             text.text = value;
-            text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             text.fontSize = fontSize;
             text.fontStyle = fontStyle;
             text.alignment = TextAnchor.MiddleLeft;
