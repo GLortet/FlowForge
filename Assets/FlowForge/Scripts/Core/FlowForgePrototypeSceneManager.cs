@@ -4,6 +4,26 @@ using UnityEngine.UI;
 
 namespace FlowForge.Core
 {
+    public enum LeanProblemType
+    {
+        Bottleneck,
+        WrongImprovementTarget,
+        QualityDefects
+    }
+
+    public enum LeanActionType
+    {
+        None,
+        BuyParallelMachine,
+        ImproveMachine,
+        RebalanceLine,
+        Apply5S,
+        ApplyPokaYoke,
+        ApplyTPM,
+        ApplyStandardWork,
+        TrainOperator
+    }
+
     /// <summary>
     /// Main controller for the manually authored FlowForge prototype scene.
     /// Attach this script to GameManager and wire Legacy UI Text/Button fields plus the three machine Transforms.
@@ -24,12 +44,44 @@ namespace FlowForge.Core
             [Min(0)] public int improvementLevel;
         }
 
+        [Serializable]
+        public class PuzzleRound
+        {
+            public string title;
+            public LeanProblemType problemType;
+            [TextArea] public string briefing;
+            [TextArea] public string leanAdvice;
+            [TextArea] public string successFeedback;
+            [TextArea] public string failureFeedback;
+            public LeanActionType recommendedAction;
+            public LeanActionType alternateRecommendedAction;
+            public int bottleneckMachineIndex;
+            public int trapMachineIndex = -1;
+            public int customerDemand = 100;
+            public float availableTime = 1000f;
+            [Range(0f, 1f)] public float targetServiceRate = 0.95f;
+            [Range(0f, 1f)] public float targetMaxDefectRate = 0.08f;
+            [Range(0f, 1f)] public float targetMinTRS = 0.75f;
+            public int targetMaxStock = 60;
+            public float[] cycleTimes = Array.Empty<float>();
+            public float[] availabilities = Array.Empty<float>();
+            public float[] defectRates = Array.Empty<float>();
+        }
+
         [Header("Manual scene machines")]
         [Tooltip("Drag Machine_01_Decoupe, Machine_02_Assemblage and Machine_03_Controle here.")]
         public Transform[] machines = new Transform[3];
 
         [Tooltip("Optional detailed operation data. If empty, defaults are created from the machine array.")]
         public MachineOperation[] operations = new MachineOperation[3];
+
+        [Header("Lean Flow Puzzle")]
+        public PuzzleRound[] puzzleRounds = Array.Empty<PuzzleRound>();
+        [Min(0)] public int currentPuzzleRoundIndex;
+        public LeanProblemType currentProblemType;
+        public LeanActionType lastAction = LeanActionType.None;
+        public int lastActionTargetMachineIndex = -1;
+        public bool lastActionWasGoodChoice;
 
         [Header("Customer mission")]
         [Min(1)] public int customerDemand = 100;
@@ -99,6 +151,8 @@ namespace FlowForge.Core
         public Button tpmButton;
         public Button standardWorkButton;
         public Button trainOperatorButton;
+        public Button nextPuzzleRoundButton;
+        public Button restartPuzzleRoundButton;
 
         [Header("Feedback colors")]
         public Color bottleneckColor = new Color(1f, 0.35f, 0.05f);
@@ -120,10 +174,10 @@ namespace FlowForge.Core
             }
 
             EnsureOperations();
-            ResetRoundState();
+            EnsurePuzzleRounds();
+            ResetRunState();
             WireButtons();
-            CalculateLinePreview(false);
-            RefreshUi("Prêt : lancez un round pour produire les montres.");
+            LoadCurrentPuzzleRound();
         }
 
         private void OnDestroy()
@@ -131,28 +185,85 @@ namespace FlowForge.Core
             UnwireButtons();
         }
 
-        private void ResetRoundState()
+        public void LoadCurrentPuzzleRound()
         {
-            scoreLean = 40;
-            stock = 120;
-            roundDefectRate = 0.18f;
-            trs = 0.62f;
-            budget = 10000f;
-            reputation = 50f;
-            revenue = 0f;
-            productionCost = 0f;
-            scrapCost = 0f;
-            leanBonus = 0f;
-            customerBonus = 0f;
-            totalRoundProfit = 0f;
-            scoreBusiness = 0;
-            possibleProduction = 0;
-            goodWatches = 0;
-            scrapWatches = 0;
-            serviceRate = 0f;
-            hasRoundResults = false;
-            roundClosed = false;
-            fiveSAppliedThisRound = false;
+            EnsureOperations();
+            EnsurePuzzleRounds();
+
+            if (puzzleRounds.Length == 0)
+            {
+                CalculateLinePreview(false);
+                RefreshUi("Aucun puzzle round configuré.");
+                return;
+            }
+
+            currentPuzzleRoundIndex = Mathf.Clamp(currentPuzzleRoundIndex, 0, puzzleRounds.Length - 1);
+            var round = puzzleRounds[currentPuzzleRoundIndex];
+            currentProblemType = round.problemType;
+            customerDemand = round.customerDemand;
+            availableTime = round.availableTime;
+            targetServiceRate = round.targetServiceRate;
+            targetMaxDefectRate = round.targetMaxDefectRate;
+            targetMinTRS = round.targetMinTRS;
+            targetMaxStock = round.targetMaxStock;
+            ApplyPuzzleRoundMachineSetup(round);
+            ResetRoundOnlyState();
+            CalculateLinePreview(false);
+            RefreshUi(BuildBriefing(round));
+        }
+
+        public void NextPuzzleRound()
+        {
+            EnsurePuzzleRounds();
+            if (puzzleRounds.Length == 0)
+            {
+                RefreshUi("Aucun puzzle round disponible.");
+                return;
+            }
+
+            currentPuzzleRoundIndex = (currentPuzzleRoundIndex + 1) % puzzleRounds.Length;
+            LoadCurrentPuzzleRound();
+        }
+
+        public void RestartPuzzleRound()
+        {
+            LoadCurrentPuzzleRound();
+        }
+
+        public void RegisterPlayerAction(LeanActionType action, int targetMachineIndex = -1)
+        {
+            lastAction = action;
+            lastActionTargetMachineIndex = targetMachineIndex;
+            lastActionWasGoodChoice = false;
+        }
+
+        public bool EvaluateActionAgainstCurrentPuzzle()
+        {
+            EnsurePuzzleRounds();
+            if (puzzleRounds.Length == 0)
+            {
+                return false;
+            }
+
+            var round = puzzleRounds[currentPuzzleRoundIndex];
+            var correctAction = lastAction == round.recommendedAction ||
+                                (round.alternateRecommendedAction != LeanActionType.None && lastAction == round.alternateRecommendedAction);
+            var correctTarget = round.bottleneckMachineIndex < 0 || lastActionTargetMachineIndex < 0 || lastActionTargetMachineIndex == round.bottleneckMachineIndex;
+            var trapTarget = round.trapMachineIndex >= 0 && lastActionTargetMachineIndex == round.trapMachineIndex;
+
+            lastActionWasGoodChoice = correctAction && correctTarget && !trapTarget;
+
+            if (lastActionWasGoodChoice)
+            {
+                scoreLean = Mathf.Clamp(scoreLean + 4, 0, 100);
+                RefreshUi($"Bon choix Lean. {round.successFeedback}\nConseil : {round.leanAdvice}");
+            }
+            else
+            {
+                RefreshUi($"Choix discutable. {round.failureFeedback}\nConseil : {round.leanAdvice}");
+            }
+
+            return lastActionWasGoodChoice;
         }
 
         public void StartRound()
@@ -183,6 +294,7 @@ namespace FlowForge.Core
             roundClosed = false;
 
             EndRound();
+            EvaluateActionAgainstCurrentPuzzle();
         }
 
         public void EndRound()
@@ -190,13 +302,13 @@ namespace FlowForge.Core
             if (!hasRoundResults)
             {
                 CalculateLinePreview();
-                RefreshUi("Aucun round lancé : cliquez d'abord sur Lancer round.");
+                RefreshUi("Aucun round lancé : choisissez une action Lean, puis cliquez sur Lancer round.");
                 return;
             }
 
             if (roundClosed)
             {
-                RefreshUi("Round déjà clôturé : investissez puis lancez le round suivant.");
+                RefreshUi("Round déjà clôturé : passez au puzzle suivant ou relancez ce puzzle.");
                 return;
             }
 
@@ -248,7 +360,8 @@ namespace FlowForge.Core
         public void BuyParallelMachine()
         {
             EnsureOperations();
-            BuyParallelMachine(GetBottleneckOperation().machine);
+            var target = GetBottleneckOperation();
+            BuyParallelMachine(target.machine);
         }
 
         public void BuyParallelMachine(Transform machine)
@@ -264,6 +377,7 @@ namespace FlowForge.Core
             operation.fixedCost += 450f;
             operation.maintenanceComplexity += 0.75f;
             scoreLean = Mathf.Clamp(scoreLean + 1, 0, 100);
+            RegisterPlayerAction(LeanActionType.BuyParallelMachine, GetOperationIndex(operation));
             CalculateLinePreview();
             RefreshUi($"Machine parallèle ajoutée sur {operation.operationName}. Capacité rapide, complexité en hausse.");
         }
@@ -288,8 +402,36 @@ namespace FlowForge.Core
             operation.defectRate = Mathf.Clamp01(operation.defectRate * 0.94f);
             operation.availability = Mathf.Clamp01(operation.availability + 0.02f);
             scoreLean = Mathf.Clamp(scoreLean + 5, 0, 100);
+            RegisterPlayerAction(LeanActionType.ImproveMachine, GetOperationIndex(operation));
             CalculateLinePreview();
             RefreshUi($"Amélioration progressive sur {operation.operationName} : cycle, qualité et TRS progressent.");
+        }
+
+        public void ImproveMachine01Decoupe()
+        {
+            ImproveMachineByIndex(0);
+        }
+
+        public void ImproveMachine02Assemblage()
+        {
+            ImproveMachineByIndex(1);
+        }
+
+        public void ImproveMachine03Controle()
+        {
+            ImproveMachineByIndex(2);
+        }
+
+        public void ImproveMachineByIndex(int index)
+        {
+            EnsureOperations();
+            if (index < 0 || index >= operations.Length)
+            {
+                RefreshUi("Machine cible invalide pour l'amélioration.");
+                return;
+            }
+
+            ImproveMachine(operations[index].machine);
         }
 
         public void RebalanceLine()
@@ -307,6 +449,7 @@ namespace FlowForge.Core
             bottleneck.cycleTime = Mathf.Max(0.5f, bottleneck.cycleTime - movedTime);
             helper.cycleTime += movedTime * 0.55f;
             scoreLean = Mathf.Clamp(scoreLean + 7, 0, 100);
+            RegisterPlayerAction(LeanActionType.RebalanceLine, GetOperationIndex(bottleneck));
             CalculateLinePreview();
             RefreshUi($"Rééquilibrage : temps transféré depuis {bottleneck.operationName} vers {helper.operationName}.");
         }
@@ -334,6 +477,7 @@ namespace FlowForge.Core
 
             stock = Mathf.Max(0, stock - 15);
             scoreLean = Mathf.Clamp(scoreLean + 10, 0, 100);
+            RegisterPlayerAction(LeanActionType.Apply5S);
             CalculateLinePreview();
             ColorAllMachines(balancedColor);
             RefreshUi("5S appliqué : postes clarifiés, mouvements réduits, stock et rebuts en baisse.");
@@ -353,6 +497,7 @@ namespace FlowForge.Core
             }
 
             scoreLean = Mathf.Clamp(scoreLean + 9, 0, 100);
+            RegisterPlayerAction(LeanActionType.ApplyPokaYoke);
             CalculateLinePreview();
             RefreshUi("Poka-Yoke appliqué : erreurs évitées à la source, rebuts réduits.");
         }
@@ -372,6 +517,7 @@ namespace FlowForge.Core
             }
 
             scoreLean = Mathf.Clamp(scoreLean + 8, 0, 100);
+            RegisterPlayerAction(LeanActionType.ApplyTPM);
             CalculateLinePreview();
             RefreshUi("TPM appliqué : disponibilité améliorée et complexité maintenance maîtrisée.");
         }
@@ -391,6 +537,7 @@ namespace FlowForge.Core
             }
 
             scoreLean = Mathf.Clamp(scoreLean + 8, 0, 100);
+            RegisterPlayerAction(LeanActionType.ApplyStandardWork);
             CalculateLinePreview();
             RefreshUi("Standard Work appliqué : cadence plus stable, variabilité réduite.");
         }
@@ -411,6 +558,7 @@ namespace FlowForge.Core
 
             reputation = Mathf.Clamp(reputation + 2f, 0f, 100f);
             scoreLean = Mathf.Clamp(scoreLean + 6, 0, 100);
+            RegisterPlayerAction(LeanActionType.TrainOperator);
             CalculateLinePreview();
             RefreshUi("Opérateur formé : qualité, stabilité et engagement progressent.");
         }
@@ -422,6 +570,23 @@ namespace FlowForge.Core
             reputation = 50f;
             scoreLean = 40;
             scoreBusiness = 0;
+            currentPuzzleRoundIndex = 0;
+            EnsureOperations(true);
+            ResetRoundOnlyState();
+            LoadCurrentPuzzleRound();
+        }
+
+        private void ResetRunState()
+        {
+            budget = 10000f;
+            reputation = 50f;
+            scoreLean = 40;
+            scoreBusiness = 0;
+            ResetRoundOnlyState();
+        }
+
+        private void ResetRoundOnlyState()
+        {
             stock = 120;
             revenue = 0f;
             productionCost = 0f;
@@ -429,6 +594,7 @@ namespace FlowForge.Core
             leanBonus = 0f;
             customerBonus = 0f;
             totalRoundProfit = 0f;
+            possibleProduction = 0;
             goodWatches = 0;
             scrapWatches = 0;
             serviceRate = 0f;
@@ -437,9 +603,133 @@ namespace FlowForge.Core
             hasRoundResults = false;
             roundClosed = false;
             fiveSAppliedThisRound = false;
-            EnsureOperations(true);
-            CalculateLinePreview();
-            RefreshUi("Prototype réinitialisé.");
+            lastAction = LeanActionType.None;
+            lastActionTargetMachineIndex = -1;
+            lastActionWasGoodChoice = false;
+        }
+
+        private void EnsurePuzzleRounds()
+        {
+            if (puzzleRounds != null && puzzleRounds.Length > 0)
+            {
+                return;
+            }
+
+            puzzleRounds = new[]
+            {
+                new PuzzleRound
+                {
+                    title = "Round 1 — Goulot évident",
+                    problemType = LeanProblemType.Bottleneck,
+                    briefing = "L'assemblage limite clairement le débit. Observe la machine orange : elle pilote toute la ligne.",
+                    leanAdvice = "Commence par la contrainte : améliorer le goulot ou rééquilibrer donne du débit global.",
+                    successFeedback = "Tu as traité la contrainte : le débit global progresse.",
+                    failureFeedback = "Tu n'as pas vraiment traité la contrainte. Le goulot continue de limiter la ligne.",
+                    recommendedAction = LeanActionType.ImproveMachine,
+                    alternateRecommendedAction = LeanActionType.RebalanceLine,
+                    bottleneckMachineIndex = 1,
+                    trapMachineIndex = 0,
+                    customerDemand = 100,
+                    availableTime = 1000f,
+                    targetServiceRate = 0.88f,
+                    targetMaxDefectRate = 0.16f,
+                    targetMinTRS = 0.62f,
+                    targetMaxStock = 95,
+                    cycleTimes = new[] { 7.5f, 14.5f, 9.0f },
+                    availabilities = new[] { 0.9f, 0.82f, 0.9f },
+                    defectRates = new[] { 0.03f, 0.05f, 0.03f }
+                },
+                new PuzzleRound
+                {
+                    title = "Round 2 — Amélioration hors goulot inutile",
+                    problemType = LeanProblemType.WrongImprovementTarget,
+                    briefing = "La découpe est déjà rapide. L'améliorer semble tentant, mais elle n'est pas la contrainte.",
+                    leanAdvice = "Une ressource non contrainte améliorée ne change presque pas le débit global : cible l'assemblage.",
+                    successFeedback = "Tu as évité le piège et agi sur la vraie ressource limitante.",
+                    failureFeedback = "Tu as investi hors goulot : localement c'est mieux, globalement la ligne reste limitée.",
+                    recommendedAction = LeanActionType.ImproveMachine,
+                    alternateRecommendedAction = LeanActionType.RebalanceLine,
+                    bottleneckMachineIndex = 1,
+                    trapMachineIndex = 0,
+                    customerDemand = 110,
+                    availableTime = 1000f,
+                    targetServiceRate = 0.9f,
+                    targetMaxDefectRate = 0.14f,
+                    targetMinTRS = 0.66f,
+                    targetMaxStock = 80,
+                    cycleTimes = new[] { 5.8f, 13.8f, 8.5f },
+                    availabilities = new[] { 0.92f, 0.8f, 0.9f },
+                    defectRates = new[] { 0.03f, 0.05f, 0.03f }
+                },
+                new PuzzleRound
+                {
+                    title = "Round 3 — Défauts qualité",
+                    problemType = LeanProblemType.QualityDefects,
+                    briefing = "Le débit existe, mais trop de montres sortent avec défaut. Produire plus ne suffit plus.",
+                    leanAdvice = "Quand la qualité chute, sécurise le process : Poka-Yoke ou Standard Work avant la vitesse pure.",
+                    successFeedback = "Tu as traité la cause qualité : moins de rebuts, meilleure valeur client.",
+                    failureFeedback = "Tu as privilégié le débit sans sécuriser la qualité : les rebuts absorbent les gains.",
+                    recommendedAction = LeanActionType.ApplyPokaYoke,
+                    alternateRecommendedAction = LeanActionType.ApplyStandardWork,
+                    bottleneckMachineIndex = -1,
+                    trapMachineIndex = 1,
+                    customerDemand = 105,
+                    availableTime = 1000f,
+                    targetServiceRate = 0.88f,
+                    targetMaxDefectRate = 0.08f,
+                    targetMinTRS = 0.68f,
+                    targetMaxStock = 70,
+                    cycleTimes = new[] { 7.5f, 9.5f, 8.0f },
+                    availabilities = new[] { 0.9f, 0.88f, 0.92f },
+                    defectRates = new[] { 0.04f, 0.16f, 0.08f }
+                }
+            };
+        }
+
+        private void ApplyPuzzleRoundMachineSetup(PuzzleRound round)
+        {
+            for (var i = 0; i < operations.Length; i++)
+            {
+                if (operations[i] == null)
+                {
+                    operations[i] = new MachineOperation();
+                }
+
+                if (machines != null && machines.Length > i && operations[i].machine == null)
+                {
+                    operations[i].machine = machines[i];
+                }
+
+                operations[i].operationName = GetDefaultOperationName(i);
+                operations[i].cycleTime = GetRoundArrayValue(round.cycleTimes, i, operations[i].cycleTime);
+                operations[i].availability = Mathf.Clamp01(GetRoundArrayValue(round.availabilities, i, operations[i].availability));
+                operations[i].defectRate = Mathf.Clamp01(GetRoundArrayValue(round.defectRates, i, operations[i].defectRate));
+                operations[i].parallelMachineCount = 1;
+                operations[i].fixedCost = i == 1 ? 420f : 350f;
+                operations[i].maintenanceComplexity = i == 1 ? 1.3f : 1f;
+                operations[i].improvementLevel = 0;
+            }
+        }
+
+        private static float GetRoundArrayValue(float[] values, int index, float fallback)
+        {
+            return values != null && values.Length > index ? values[index] : fallback;
+        }
+
+        private static string GetDefaultOperationName(int index)
+        {
+            switch (index)
+            {
+                case 0: return "Découpe";
+                case 1: return "Assemblage";
+                case 2: return "Contrôle";
+                default: return $"Opération {index + 1}";
+            }
+        }
+
+        private string BuildBriefing(PuzzleRound round)
+        {
+            return $"{round.title}\nObjectif : {round.briefing}\nConseil Lean : {round.leanAdvice}";
         }
 
         private void EnsureOperations(bool forceDefaults = false)
@@ -575,6 +865,19 @@ namespace FlowForge.Core
             return null;
         }
 
+        private int GetOperationIndex(MachineOperation searchedOperation)
+        {
+            for (var i = 0; i < operations.Length; i++)
+            {
+                if (operations[i] == searchedOperation)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
         private float CalculateLineDefectRate()
         {
             var goodProbability = 1f;
@@ -641,6 +944,8 @@ namespace FlowForge.Core
             WireButton(tpmButton, ApplyTPM);
             WireButton(standardWorkButton, ApplyStandardWork);
             WireButton(trainOperatorButton, TrainOperator);
+            WireButton(nextPuzzleRoundButton, NextPuzzleRound);
+            WireButton(restartPuzzleRoundButton, RestartPuzzleRound);
         }
 
         private void WireButton(Button button, UnityEngine.Events.UnityAction action)
@@ -666,6 +971,8 @@ namespace FlowForge.Core
             UnwireButton(tpmButton, ApplyTPM);
             UnwireButton(standardWorkButton, ApplyStandardWork);
             UnwireButton(trainOperatorButton, TrainOperator);
+            UnwireButton(nextPuzzleRoundButton, NextPuzzleRound);
+            UnwireButton(restartPuzzleRoundButton, RestartPuzzleRound);
         }
 
         private void UnwireButton(Button button, UnityEngine.Events.UnityAction action)
@@ -759,6 +1066,8 @@ namespace FlowForge.Core
             buyParallelMachineButton = buyParallelMachineButton != null ? buyParallelMachineButton : FindButton("BuyParallelMachineButton");
             improveMachineButton = improveMachineButton != null ? improveMachineButton : FindButton("ImproveMachineButton");
             rebalanceLineButton = rebalanceLineButton != null ? rebalanceLineButton : FindButton("RebalanceLineButton");
+            nextPuzzleRoundButton = nextPuzzleRoundButton != null ? nextPuzzleRoundButton : FindButton("NextPuzzleRoundButton");
+            restartPuzzleRoundButton = restartPuzzleRoundButton != null ? restartPuzzleRoundButton : FindButton("RestartPuzzleRoundButton");
 
             if (machines == null || machines.Length < 3)
             {
